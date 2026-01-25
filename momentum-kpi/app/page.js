@@ -1,8 +1,25 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const SUPABASE_URL = 'https://bnzbaywpfzfochqurqte.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuemJheXdwZnpmb2NocXVycXRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMTU0MTYsImV4cCI6MjA4NDg5MTQxNn0._d0wNc0kzacLHAUYT1Iafx4LeKjrQA8NGhXScz4xu60';
+
+// Default KPI Goals
+const DEFAULT_KPI_GOALS = {
+  daily_offers: 20,
+  daily_calls: 20,
+  daily_new_agents: 300,
+  daily_follow_ups: 500,
+  weekly_contracts: 2,
+  monthly_closed: 5
+};
+
+// Emoji options for avatars
+const AVATAR_EMOJIS = [
+  '😀', '😎', '🤓', '🧑‍💼', '👨‍💼', '👩‍💼', '🦸', '🦹', '🧑‍🚀', '👷',
+  '🎯', '🔥', '⚡', '💪', '🏆', '💰', '🚀', '💎', '⭐', '🌟',
+  '🦅', '🦁', '🐺', '🦊', '🐯', '🦈', '🐉', '🦄', '🔮', '👑'
+];
 
 const supabaseFetch = async (endpoint, options = {}) => {
   const url = `${SUPABASE_URL}/rest/v1/${endpoint}`;
@@ -29,10 +46,18 @@ const db = {
     getAll: (orgId) => supabaseFetch(`users?organization_id=eq.${orgId}&select=*`),
     getByEmail: (email) => supabaseFetch(`users?email=eq.${email.toLowerCase().trim()}&select=*`),
     create: (user) => supabaseFetch('users', { method: 'POST', body: [user] }),
+    update: (userId, updates) => supabaseFetch(`users?id=eq.${userId}`, {
+      method: 'PATCH',
+      body: updates
+    }),
   },
   orgs: {
     create: (org) => supabaseFetch('organizations', { method: 'POST', body: [org] }),
     getById: (id) => supabaseFetch(`organizations?id=eq.${id}&select=*`),
+    update: (orgId, updates) => supabaseFetch(`organizations?id=eq.${orgId}`, {
+      method: 'PATCH',
+      body: updates
+    }),
   },
   invites: {
     getByCode: (code) => supabaseFetch(`invites?code=eq.${code}&is_active=eq.true&select=*`),
@@ -69,7 +94,6 @@ const generateInviteCode = () => {
 // Import pending offers from Google Sheet when a new user signs up
 const importPendingOffers = async (userId, userName, organizationId) => {
   try {
-    // Get all pending offers for this user name in this organization
     const { data: pendingOffers } = await db.pendingOffers.getByNameAndOrg(userName, organizationId);
     
     if (!pendingOffers || pendingOffers.length === 0) {
@@ -79,7 +103,6 @@ const importPendingOffers = async (userId, userName, organizationId) => {
     
     console.log(`Found ${pendingOffers.length} pending offer records for ${userName}`);
     
-    // Import each pending offer into daily_kpis
     for (const pending of pendingOffers) {
       await db.kpis.upsert({
         user_id: userId,
@@ -95,7 +118,6 @@ const importPendingOffers = async (userId, userName, organizationId) => {
       console.log(`Imported ${pending.offer_count} offers for ${pending.date}`);
     }
     
-    // Delete the pending records (they're now in daily_kpis)
     await db.pendingOffers.deleteByNameAndOrg(userName, organizationId);
     console.log(`Deleted pending offers for ${userName}`);
     
@@ -112,6 +134,43 @@ const formatDateString = (date) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+// Avatar component
+const UserAvatar = ({ user, size = 'md' }) => {
+  const sizeClasses = {
+    sm: 'w-8 h-8 text-lg',
+    md: 'w-10 h-10 text-xl',
+    lg: 'w-16 h-16 text-3xl',
+    xl: 'w-24 h-24 text-5xl'
+  };
+  
+  const displayName = user?.display_name || user?.name || '?';
+  const initial = displayName.charAt(0).toUpperCase();
+  
+  if (user?.avatar_url) {
+    return (
+      <img 
+        src={user.avatar_url} 
+        alt={displayName}
+        className={`${sizeClasses[size]} rounded-full object-cover border-2 border-slate-600`}
+      />
+    );
+  }
+  
+  if (user?.avatar_emoji) {
+    return (
+      <div className={`${sizeClasses[size]} rounded-full bg-slate-700 flex items-center justify-center border-2 border-slate-600`}>
+        {user.avatar_emoji}
+      </div>
+    );
+  }
+  
+  return (
+    <div className={`${sizeClasses[size]} rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold border-2 border-slate-600`}>
+      {initial}
+    </div>
+  );
 };
 
 export default function MomentumApp() {
@@ -132,8 +191,26 @@ export default function MomentumApp() {
   const [leaderboardPeriod, setLeaderboardPeriod] = useState('week');
   const [analyticsPeriod, setAnalyticsPeriod] = useState('daily');
   const [historyDate, setHistoryDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Profile editing state
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileForm, setProfileForm] = useState({ display_name: '', avatar_emoji: '', avatar_url: '' });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const fileInputRef = useRef(null);
+  
+  // KPI Goals editing state (for owners)
+  const [kpiGoals, setKpiGoals] = useState(DEFAULT_KPI_GOALS);
+  const [kpiSaving, setKpiSaving] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
+
+  // Get KPI goals from organization or use defaults
+  const getGoals = () => {
+    if (organization?.kpi_goals) {
+      return { ...DEFAULT_KPI_GOALS, ...organization.kpi_goals };
+    }
+    return DEFAULT_KPI_GOALS;
+  };
 
   useEffect(() => {
     checkSession();
@@ -141,15 +218,16 @@ export default function MomentumApp() {
     return () => clearInterval(timer);
   }, []);
 
-  // FIX: Load team data on login only, no auto-refresh interval
   useEffect(() => {
     if (currentUser && organization) {
       loadTeamData();
-      // REMOVED: Auto-refresh interval that was causing the bug
+      // Load KPI goals from organization
+      if (organization.kpi_goals) {
+        setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
+      }
     }
   }, [currentUser, organization]);
 
-  // FIX: Refresh data when switching to team/analytics/history tabs (not personal)
   useEffect(() => {
     if (currentUser && organization && currentTab !== 'personal') {
       loadTeamData();
@@ -161,6 +239,11 @@ export default function MomentumApp() {
     if (saved) {
       const user = JSON.parse(saved);
       setCurrentUser(user);
+      setProfileForm({
+        display_name: user.display_name || '',
+        avatar_emoji: user.avatar_emoji || '',
+        avatar_url: user.avatar_url || ''
+      });
       if (user.organization_id) {
         const { data: orgs } = await db.orgs.getById(user.organization_id);
         if (orgs?.[0]) setOrganization(orgs[0]);
@@ -213,7 +296,10 @@ export default function MomentumApp() {
       setError('Email already registered');
       return;
     }
-    const { data: orgData, error: orgError } = await db.orgs.create({ name: signupForm.orgName });
+    const { data: orgData, error: orgError } = await db.orgs.create({ 
+      name: signupForm.orgName,
+      kpi_goals: DEFAULT_KPI_GOALS
+    });
     if (orgError || !orgData?.[0]) {
       setError('Failed to create organization');
       return;
@@ -224,7 +310,10 @@ export default function MomentumApp() {
       email: signupForm.email.toLowerCase().trim(),
       password_hash: signupForm.password,
       role: 'owner',
-      organization_id: org.id
+      organization_id: org.id,
+      display_name: null,
+      avatar_emoji: null,
+      avatar_url: null
     });
     if (userError || !userData?.[0]) {
       setError('Failed to create account');
@@ -232,12 +321,12 @@ export default function MomentumApp() {
     }
     const user = userData[0];
     
-    // Import any pending offers from Google Sheet for this user
     await importPendingOffers(user.id, user.name, org.id);
     
     localStorage.setItem('momentum_user', JSON.stringify(user));
     setCurrentUser(user);
     setOrganization(org);
+    setKpiGoals(DEFAULT_KPI_GOALS);
     setView('dashboard');
   };
 
@@ -267,7 +356,10 @@ export default function MomentumApp() {
       email: signupForm.email.toLowerCase().trim(),
       password_hash: signupForm.password,
       role: 'member',
-      organization_id: invite.organization_id
+      organization_id: invite.organization_id,
+      display_name: null,
+      avatar_emoji: null,
+      avatar_url: null
     });
     if (userError || !userData?.[0]) {
       setError('Failed to create account');
@@ -276,7 +368,6 @@ export default function MomentumApp() {
     const user = userData[0];
     await db.invites.use(invite.code, user.id);
     
-    // Import any pending offers from Google Sheet for this user
     await importPendingOffers(user.id, user.name, invite.organization_id);
     
     const { data: orgs } = await db.orgs.getById(invite.organization_id);
@@ -297,6 +388,11 @@ export default function MomentumApp() {
     const { data: orgs } = await db.orgs.getById(user.organization_id);
     localStorage.setItem('momentum_user', JSON.stringify(user));
     setCurrentUser(user);
+    setProfileForm({
+      display_name: user.display_name || '',
+      avatar_emoji: user.avatar_emoji || '',
+      avatar_url: user.avatar_url || ''
+    });
     setOrganization(orgs?.[0] || null);
     setView('dashboard');
   };
@@ -335,6 +431,91 @@ export default function MomentumApp() {
     loadTeamData();
   };
 
+  // Profile update functions
+  const openProfileModal = () => {
+    setProfileForm({
+      display_name: currentUser.display_name || '',
+      avatar_emoji: currentUser.avatar_emoji || '',
+      avatar_url: currentUser.avatar_url || ''
+    });
+    setShowProfileModal(true);
+  };
+
+  const handleProfileSave = async () => {
+    setProfileSaving(true);
+    try {
+      const updates = {
+        display_name: profileForm.display_name || null,
+        avatar_emoji: profileForm.avatar_emoji || null,
+        avatar_url: profileForm.avatar_url || null
+      };
+      
+      await db.users.update(currentUser.id, updates);
+      
+      const updatedUser = { ...currentUser, ...updates };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('momentum_user', JSON.stringify(updatedUser));
+      
+      // Update in team members list
+      setTeamMembers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
+      
+      setShowProfileModal(false);
+    } catch (error) {
+      console.error('Failed to save profile:', error);
+    }
+    setProfileSaving(false);
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (file.size > 500000) { // 500KB limit
+      alert('Image too large. Please use an image under 500KB.');
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProfileForm(prev => ({
+        ...prev,
+        avatar_url: reader.result,
+        avatar_emoji: '' // Clear emoji if uploading image
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const selectEmoji = (emoji) => {
+    setProfileForm(prev => ({
+      ...prev,
+      avatar_emoji: emoji,
+      avatar_url: '' // Clear image if selecting emoji
+    }));
+  };
+
+  const clearAvatar = () => {
+    setProfileForm(prev => ({
+      ...prev,
+      avatar_emoji: '',
+      avatar_url: ''
+    }));
+  };
+
+  // KPI Goals update function (owner only)
+  const handleKpiGoalsSave = async () => {
+    setKpiSaving(true);
+    try {
+      await db.orgs.update(organization.id, { kpi_goals: kpiGoals });
+      setOrganization(prev => ({ ...prev, kpi_goals: kpiGoals }));
+      alert('KPI goals saved!');
+    } catch (error) {
+      console.error('Failed to save KPI goals:', error);
+      alert('Failed to save KPI goals');
+    }
+    setKpiSaving(false);
+  };
+
   const getMyKPI = () => teamKPIs[currentUser?.id]?.[today] || {
     offers: 0,
     new_agents: 0,
@@ -356,7 +537,6 @@ export default function MomentumApp() {
       date: today
     };
 
-    // Optimistic UI update
     setTeamKPIs(prev => ({
       ...prev,
       [currentUser.id]: {
@@ -365,7 +545,6 @@ export default function MomentumApp() {
       }
     }));
 
-    // Save to database
     const { data, error } = await db.kpis.upsert({
       user_id: currentUser.id,
       date: today,
@@ -378,7 +557,6 @@ export default function MomentumApp() {
       notes: updated.notes || ''
     });
 
-    // Log for debugging
     if (error) {
       console.error('KPI save failed:', error);
     } else {
@@ -386,7 +564,6 @@ export default function MomentumApp() {
     }
   };
 
-  // FIX: Use string comparison instead of Date objects to avoid timezone bugs
   const getStats = (userId, period) => {
     const userKPIs = teamKPIs[userId] || {};
     const now = new Date();
@@ -394,7 +571,6 @@ export default function MomentumApp() {
     let startDateStr, endDateStr;
     
     if (period === 'week') {
-      // Current week (Sunday to Saturday)
       const dayOfWeek = now.getDay();
       const startDate = new Date(now);
       startDate.setDate(now.getDate() - dayOfWeek);
@@ -403,25 +579,21 @@ export default function MomentumApp() {
       startDateStr = formatDateString(startDate);
       endDateStr = formatDateString(endDate);
     } else if (period === 'month') {
-      // Current calendar month
       const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       startDateStr = formatDateString(startDate);
       endDateStr = formatDateString(endDate);
     } else if (period === 'quarter') {
-      // Current quarter
       const quarter = Math.floor(now.getMonth() / 3);
       const startDate = new Date(now.getFullYear(), quarter * 3, 1);
       const endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0);
       startDateStr = formatDateString(startDate);
       endDateStr = formatDateString(endDate);
     } else {
-      // Default: today only
       startDateStr = formatDateString(now);
       endDateStr = formatDateString(now);
     }
     
-    // FIX: Compare date strings directly instead of Date objects
     return Object.entries(userKPIs).reduce((acc, [date, kpi]) => {
       if (date >= startDateStr && date <= endDateStr) {
         return {
@@ -437,7 +609,6 @@ export default function MomentumApp() {
   };
 
   const getTeamTotals = (period) => {
-    // Map analytics period names to getStats period names
     const statsPeriod = period === 'weekly' ? 'week' : period === 'monthly' ? 'month' : period === 'quarterly' ? 'quarter' : period;
     
     return teamMembers.reduce((t, user) => {
@@ -474,8 +645,9 @@ export default function MomentumApp() {
   const exportCSV = () => {
     let csv = 'Member,Date,Offers,New Agents,Follow Ups,Calls,Deals UC,Deals Closed,Notes\n';
     teamMembers.forEach(user => {
+      const name = user.display_name || user.name;
       Object.entries(teamKPIs[user.id] || {}).forEach(([date, k]) => {
-        csv += `"${user.name}","${date}",${k.offers || 0},${k.new_agents || 0},${k.follow_ups || 0},${k.phone_calls || 0},${k.deals_under_contract || 0},${k.deals_closed || 0},"${(k.notes || '').replace(/"/g, '""')}"\n`;
+        csv += `"${name}","${date}",${k.offers || 0},${k.new_agents || 0},${k.follow_ups || 0},${k.phone_calls || 0},${k.deals_under_contract || 0},${k.deals_closed || 0},"${(k.notes || '').replace(/"/g, '""')}"\n`;
       });
     });
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -490,24 +662,27 @@ export default function MomentumApp() {
     let s = `⚡ MOMENTUM - ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n\n`;
     s += `TEAM: ${t.offers} offers | ${t.texts} texts | ${t.calls} calls\n\n`;
     teamMembers.forEach(u => {
+      const name = u.display_name || u.name;
       const k = teamKPIs[u.id]?.[today] || {};
-      s += `${u.name}: ${k.offers || 0} offers, ${(k.new_agents || 0) + (k.follow_ups || 0)} texts, ${k.phone_calls || 0} calls\n`;
+      s += `${name}: ${k.offers || 0} offers, ${(k.new_agents || 0) + (k.follow_ups || 0)} texts, ${k.phone_calls || 0} calls\n`;
     });
     navigator.clipboard.writeText(s);
     alert('Copied!');
   };
 
+  const goals = getGoals();
   const myKPI = getMyKPI();
   const totalTexts = (myKPI.new_agents || 0) + (myKPI.follow_ups || 0);
   const weeklyStats = getStats(currentUser?.id, 'week');
   const monthlyStats = getStats(currentUser?.id, 'month');
+  const displayName = currentUser?.display_name || currentUser?.name;
 
   const pct = (c, g) => Math.min((c / g) * 100, 100);
   const pColor = (c, g) => pct(c, g) >= 100 ? 'bg-green-500' : pct(c, g) >= 50 ? 'bg-yellow-500' : 'bg-red-500';
 
   const getMotivation = () => {
     const h = currentTime.getHours();
-    if ((myKPI.offers || 0) >= 20 && totalTexts >= 800) return "🔥 CRUSHING IT!";
+    if ((myKPI.offers || 0) >= goals.daily_offers && totalTexts >= (goals.daily_new_agents + goals.daily_follow_ups)) return "🔥 CRUSHING IT!";
     if (h < 10) return "☀️ Morning grind!";
     if (h < 14) return "💪 Keep pushing!";
     if (h < 18) return "🎯 Finish strong!";
@@ -598,6 +773,94 @@ export default function MomentumApp() {
   return (
     <div className="min-h-screen bg-slate-900 p-4">
       <div className="max-w-6xl mx-auto">
+        {/* Profile Edit Modal */}
+        {showProfileModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md border border-slate-700">
+              <h2 className="text-xl font-bold text-white mb-4">Edit Profile</h2>
+              
+              {/* Current Avatar Preview */}
+              <div className="flex justify-center mb-4">
+                <UserAvatar user={{ ...currentUser, ...profileForm }} size="xl" />
+              </div>
+              
+              {/* Display Name */}
+              <div className="mb-4">
+                <label className="text-slate-400 text-sm mb-1 block">Display Name</label>
+                <input 
+                  type="text" 
+                  placeholder={currentUser?.name || 'Display Name'}
+                  value={profileForm.display_name}
+                  onChange={e => setProfileForm(prev => ({ ...prev, display_name: e.target.value }))}
+                  className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none"
+                />
+                <p className="text-slate-500 text-xs mt-1">Leave blank to use your signup name: {currentUser?.name}</p>
+              </div>
+              
+              {/* Avatar Options */}
+              <div className="mb-4">
+                <label className="text-slate-400 text-sm mb-2 block">Avatar</label>
+                
+                {/* Upload Photo */}
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg mb-3 flex items-center justify-center gap-2"
+                >
+                  📷 Upload Photo
+                </button>
+                
+                {/* Emoji Picker */}
+                <p className="text-slate-500 text-xs mb-2">Or choose an emoji:</p>
+                <div className="grid grid-cols-10 gap-1 bg-slate-700 p-2 rounded-lg max-h-32 overflow-y-auto">
+                  {AVATAR_EMOJIS.map(emoji => (
+                    <button
+                      key={emoji}
+                      onClick={() => selectEmoji(emoji)}
+                      className={`text-xl p-1 rounded hover:bg-slate-600 ${profileForm.avatar_emoji === emoji ? 'bg-blue-600' : ''}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+                
+                {/* Clear Avatar */}
+                {(profileForm.avatar_emoji || profileForm.avatar_url) && (
+                  <button 
+                    onClick={clearAvatar}
+                    className="w-full text-red-400 hover:text-red-300 text-sm mt-2"
+                  >
+                    ✕ Remove Avatar
+                  </button>
+                )}
+              </div>
+              
+              {/* Buttons */}
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowProfileModal(false)}
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleProfileSave}
+                  disabled={profileSaving}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg disabled:opacity-50"
+                >
+                  {profileSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -613,8 +876,12 @@ export default function MomentumApp() {
               <p className="text-green-400 text-sm">{getMotivation()}</p>
             </div>
             <div className="flex items-center gap-3">
+              {/* Clickable Avatar */}
+              <button onClick={openProfileModal} className="hover:opacity-80 transition">
+                <UserAvatar user={currentUser} size="md" />
+              </button>
               <div className="text-right">
-                <p className="text-white font-semibold">{currentUser?.name}</p>
+                <p className="text-white font-semibold">{displayName}</p>
                 <p className="text-slate-400 text-xs">{currentUser?.role === 'owner' ? '👑 Owner' : '👤 Member'}</p>
               </div>
               <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm">Logout</button>
@@ -636,12 +903,20 @@ export default function MomentumApp() {
         {/* PERSONAL TAB */}
         {currentTab === 'personal' && (
           <div className="space-y-4">
-            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-              <p className="text-white font-bold text-xl">👤 {currentUser?.name}</p>
-              <p className="text-slate-400 text-sm">Your daily KPIs</p>
+            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 flex items-center gap-4">
+              <button onClick={openProfileModal} className="hover:opacity-80 transition">
+                <UserAvatar user={currentUser} size="lg" />
+              </button>
+              <div className="flex-1">
+                <p className="text-white font-bold text-xl">{displayName}</p>
+                <p className="text-slate-400 text-sm">Your daily KPIs</p>
+              </div>
+              <button onClick={openProfileModal} className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-lg text-sm">
+                ✏️ Edit Profile
+              </button>
             </div>
 
-            {/* Offers Submitted - Read-only if synced from Google Sheet, manual otherwise */}
+            {/* Offers Submitted */}
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
               <div className="flex justify-between items-center mb-2">
                 <div>
@@ -650,10 +925,10 @@ export default function MomentumApp() {
                     <p className="text-xs text-green-400">📊 Synced from Google Sheet</p>
                   )}
                 </div>
-                <span className="text-white text-2xl font-bold">{myKPI.offers || 0}/20</span>
+                <span className="text-white text-2xl font-bold">{myKPI.offers || 0}/{goals.daily_offers}</span>
               </div>
               <div className="w-full bg-slate-700 rounded-full h-3 mb-2">
-                <div className={`h-3 rounded-full ${pColor(myKPI.offers || 0, 20)}`} style={{ width: `${pct(myKPI.offers || 0, 20)}%` }}></div>
+                <div className={`h-3 rounded-full ${pColor(myKPI.offers || 0, goals.daily_offers)}`} style={{ width: `${pct(myKPI.offers || 0, goals.daily_offers)}%` }}></div>
               </div>
               {!organization?.google_sheet_sync && (
                 <div className="flex gap-2">
@@ -664,14 +939,14 @@ export default function MomentumApp() {
               )}
             </div>
 
-            {/* Phone Conversations - Manual entry */}
+            {/* Phone Conversations */}
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-white font-bold">Phone Conversations</span>
-                <span className="text-white text-2xl font-bold">{myKPI.phone_calls || 0}/20</span>
+                <span className="text-white text-2xl font-bold">{myKPI.phone_calls || 0}/{goals.daily_calls}</span>
               </div>
               <div className="w-full bg-slate-700 rounded-full h-3 mb-2">
-                <div className={`h-3 rounded-full ${pColor(myKPI.phone_calls || 0, 20)}`} style={{ width: `${pct(myKPI.phone_calls || 0, 20)}%` }}></div>
+                <div className={`h-3 rounded-full ${pColor(myKPI.phone_calls || 0, goals.daily_calls)}`} style={{ width: `${pct(myKPI.phone_calls || 0, goals.daily_calls)}%` }}></div>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded">-1</button>
@@ -680,16 +955,17 @@ export default function MomentumApp() {
               </div>
             </div>
 
+            {/* Agent Texts */}
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-white font-bold">Agent Texts</span>
-                <span className="text-white text-2xl font-bold">{totalTexts}/800</span>
+                <span className="text-white text-2xl font-bold">{totalTexts}/{goals.daily_new_agents + goals.daily_follow_ups}</span>
               </div>
               <div className="w-full bg-slate-700 rounded-full h-3 mb-4">
-                <div className={`h-3 rounded-full ${pColor(totalTexts, 800)}`} style={{ width: `${pct(totalTexts, 800)}%` }}></div>
+                <div className={`h-3 rounded-full ${pColor(totalTexts, goals.daily_new_agents + goals.daily_follow_ups)}`} style={{ width: `${pct(totalTexts, goals.daily_new_agents + goals.daily_follow_ups)}%` }}></div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                {[{ label: 'New Agents', field: 'new_agents', goal: 300 }, { label: 'Follow-ups', field: 'follow_ups', goal: 500 }].map(({ label, field, goal }) => (
+                {[{ label: 'New Agents', field: 'new_agents', goal: goals.daily_new_agents }, { label: 'Follow-ups', field: 'follow_ups', goal: goals.daily_follow_ups }].map(({ label, field, goal }) => (
                   <div key={field} className="bg-slate-700 rounded p-3">
                     <p className="text-slate-400 text-xs">{label}: {myKPI[field] || 0}/{goal}</p>
                     <div className="flex gap-2 mt-2">
@@ -702,11 +978,12 @@ export default function MomentumApp() {
               </div>
             </div>
 
+            {/* Deals */}
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
                 <p className="text-white font-bold">Deals Under Contract</p>
-                <p className="text-xs text-slate-400 mb-1">Weekly Goal: 2</p>
-                <p className="text-3xl font-bold text-purple-400">{weeklyStats.contracts}/2</p>
+                <p className="text-xs text-slate-400 mb-1">Weekly Goal: {goals.weekly_contracts}</p>
+                <p className="text-3xl font-bold text-purple-400">{weeklyStats.contracts}/{goals.weekly_contracts}</p>
                 <div className="flex gap-2 mt-2">
                   <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded">-1</button>
                   <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) + 1)} className="flex-1 bg-purple-600 text-white py-2 rounded">+1</button>
@@ -714,8 +991,8 @@ export default function MomentumApp() {
               </div>
               <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
                 <p className="text-white font-bold">Deals Closed</p>
-                <p className="text-xs text-slate-400 mb-1">Monthly Goal: 5</p>
-                <p className="text-3xl font-bold text-yellow-400">{monthlyStats.closed}/5</p>
+                <p className="text-xs text-slate-400 mb-1">Monthly Goal: {goals.monthly_closed}</p>
+                <p className="text-3xl font-bold text-yellow-400">{monthlyStats.closed}/{goals.monthly_closed}</p>
                 <div className="flex gap-2 mt-2">
                   <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded">-1</button>
                   <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) + 1)} className="flex-1 bg-yellow-600 text-white py-2 rounded">+1</button>
@@ -723,6 +1000,7 @@ export default function MomentumApp() {
               </div>
             </div>
 
+            {/* Notes */}
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
               <p className="text-white font-bold mb-2">📝 Daily Notes</p>
               <textarea
@@ -750,8 +1028,9 @@ export default function MomentumApp() {
               {getLeaderboard().map((e, i) => (
                 <div key={e.user.id} className="bg-slate-700 rounded-lg p-4 mb-2 flex items-center gap-4">
                   <span className="text-3xl">{['🥇', '🥈', '🥉', '🏅'][i] || '🏅'}</span>
+                  <UserAvatar user={e.user} size="sm" />
                   <div className="flex-1">
-                    <p className="text-white font-bold">{e.user.name}</p>
+                    <p className="text-white font-bold">{e.user.display_name || e.user.name}</p>
                     <p className="text-slate-400 text-xs">Offers: {e.stats.offers} | Texts: {e.stats.texts} | Calls: {e.stats.calls}</p>
                   </div>
                   <div className="text-2xl font-bold text-yellow-400">{e.score}</div>
@@ -776,13 +1055,21 @@ export default function MomentumApp() {
               <div className="grid grid-cols-5 gap-3">
                 {(() => {
                   const t = getTeamTotals(analyticsPeriod);
-                  const goals = {
-                    daily: [80, 3200, 80, 1, 1],
-                    weekly: [560, 22400, 560, 8, 2],
-                    monthly: [2400, 96000, 2400, 8, 20],
-                    quarterly: [7200, 288000, 7200, 24, 60]
+                  const teamSize = teamMembers.length || 1;
+                  const goalMultipliers = {
+                    daily: [1, 1, 1, 1, 1],
+                    weekly: [7, 7, 7, 1, 1],
+                    monthly: [30, 30, 30, 4, 1],
+                    quarterly: [90, 90, 90, 12, 3]
                   }[analyticsPeriod];
-                  return [['Offers', t.offers, goals[0]], ['Texts', t.texts, goals[1]], ['Calls', t.calls, goals[2]], ['UC', t.contracts, goals[3]], ['Closed', t.closed, goals[4]]].map(([n, v, g]) => (
+                  const teamGoals = [
+                    goals.daily_offers * teamSize * goalMultipliers[0],
+                    (goals.daily_new_agents + goals.daily_follow_ups) * teamSize * goalMultipliers[1],
+                    goals.daily_calls * teamSize * goalMultipliers[2],
+                    goals.weekly_contracts * teamSize * goalMultipliers[3],
+                    goals.monthly_closed * teamSize * goalMultipliers[4]
+                  ];
+                  return [['Offers', t.offers, teamGoals[0]], ['Texts', t.texts, teamGoals[1]], ['Calls', t.calls, teamGoals[2]], ['UC', t.contracts, teamGoals[3]], ['Closed', t.closed, teamGoals[4]]].map(([n, v, g]) => (
                     <div key={n} className="bg-slate-700 rounded-lg p-3 text-center">
                       <p className="text-slate-400 text-xs">{n}</p>
                       <p className="text-2xl font-bold text-white">{v}</p>
@@ -810,7 +1097,10 @@ export default function MomentumApp() {
               const k = teamKPIs[user.id]?.[historyDate] || {};
               return (
                 <div key={user.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-                  <h3 className="text-white font-bold mb-2">{user.name}</h3>
+                  <div className="flex items-center gap-3 mb-2">
+                    <UserAvatar user={user} size="sm" />
+                    <h3 className="text-white font-bold">{user.display_name || user.name}</h3>
+                  </div>
                   <div className="grid grid-cols-6 gap-2 text-sm">
                     {[['Offers', k.offers], ['New', k.new_agents], ['Follow', k.follow_ups], ['Calls', k.phone_calls], ['UC', k.deals_under_contract], ['Closed', k.deals_closed]].map(([l, v]) => (
                       <div key={l} className="bg-slate-700 rounded p-2 text-center">
@@ -832,6 +1122,75 @@ export default function MomentumApp() {
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
               <h2 className="text-xl font-bold text-white mb-4">👑 Admin Panel</h2>
 
+              {/* KPI Goals Section */}
+              <div className="mb-6 bg-slate-700 rounded-lg p-4">
+                <h3 className="text-white font-semibold mb-4">📊 Team KPI Goals</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-slate-400 text-xs">Daily Offers</label>
+                    <input 
+                      type="number" 
+                      value={kpiGoals.daily_offers}
+                      onChange={e => setKpiGoals(prev => ({ ...prev, daily_offers: parseInt(e.target.value) || 0 }))}
+                      className="w-full bg-slate-600 text-white rounded px-3 py-2 mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 text-xs">Daily Calls</label>
+                    <input 
+                      type="number" 
+                      value={kpiGoals.daily_calls}
+                      onChange={e => setKpiGoals(prev => ({ ...prev, daily_calls: parseInt(e.target.value) || 0 }))}
+                      className="w-full bg-slate-600 text-white rounded px-3 py-2 mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 text-xs">Daily New Agent Texts</label>
+                    <input 
+                      type="number" 
+                      value={kpiGoals.daily_new_agents}
+                      onChange={e => setKpiGoals(prev => ({ ...prev, daily_new_agents: parseInt(e.target.value) || 0 }))}
+                      className="w-full bg-slate-600 text-white rounded px-3 py-2 mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 text-xs">Daily Follow-up Texts</label>
+                    <input 
+                      type="number" 
+                      value={kpiGoals.daily_follow_ups}
+                      onChange={e => setKpiGoals(prev => ({ ...prev, daily_follow_ups: parseInt(e.target.value) || 0 }))}
+                      className="w-full bg-slate-600 text-white rounded px-3 py-2 mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 text-xs">Weekly Contracts</label>
+                    <input 
+                      type="number" 
+                      value={kpiGoals.weekly_contracts}
+                      onChange={e => setKpiGoals(prev => ({ ...prev, weekly_contracts: parseInt(e.target.value) || 0 }))}
+                      className="w-full bg-slate-600 text-white rounded px-3 py-2 mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 text-xs">Monthly Closed Deals</label>
+                    <input 
+                      type="number" 
+                      value={kpiGoals.monthly_closed}
+                      onChange={e => setKpiGoals(prev => ({ ...prev, monthly_closed: parseInt(e.target.value) || 0 }))}
+                      className="w-full bg-slate-600 text-white rounded px-3 py-2 mt-1"
+                    />
+                  </div>
+                </div>
+                <button 
+                  onClick={handleKpiGoalsSave}
+                  disabled={kpiSaving}
+                  className="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-50"
+                >
+                  {kpiSaving ? 'Saving...' : '💾 Save KPI Goals'}
+                </button>
+              </div>
+
+              {/* Invite Codes */}
               <div className="mb-6">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-white font-semibold">Invite Codes</h3>
@@ -850,12 +1209,14 @@ export default function MomentumApp() {
                 </div>
               </div>
 
+              {/* Team Members */}
               <div>
                 <h3 className="text-white font-semibold mb-2">Team Members ({teamMembers.length})</h3>
                 {teamMembers.map(u => (
-                  <div key={u.id} className="bg-slate-700 rounded-lg p-3 mb-2 flex justify-between items-center">
-                    <div>
-                      <p className="text-white font-semibold">{u.name}</p>
+                  <div key={u.id} className="bg-slate-700 rounded-lg p-3 mb-2 flex items-center gap-3">
+                    <UserAvatar user={u} size="sm" />
+                    <div className="flex-1">
+                      <p className="text-white font-semibold">{u.display_name || u.name}</p>
                       <p className="text-slate-400 text-sm">{u.email}</p>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${u.role === 'owner' ? 'bg-yellow-600' : 'bg-slate-600'} text-white`}>{u.role}</span>
