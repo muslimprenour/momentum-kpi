@@ -106,6 +106,14 @@ const importPendingOffers = async (userId, userName, organizationId) => {
   }
 };
 
+// Helper function to format date as YYYY-MM-DD string
+const formatDateString = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function MomentumApp() {
   const [view, setView] = useState('loading');
   const [authMode, setAuthMode] = useState('login');
@@ -378,39 +386,44 @@ export default function MomentumApp() {
     }
   };
 
+  // FIX: Use string comparison instead of Date objects to avoid timezone bugs
   const getStats = (userId, period) => {
     const userKPIs = teamKPIs[userId] || {};
     const now = new Date();
     
-    let startDate, endDate;
+    let startDateStr, endDateStr;
     
     if (period === 'week') {
       // Current week (Sunday to Saturday)
       const dayOfWeek = now.getDay();
-      startDate = new Date(now);
+      const startDate = new Date(now);
       startDate.setDate(now.getDate() - dayOfWeek);
-      startDate.setHours(0, 0, 0, 0);
-      endDate = new Date(startDate);
+      const endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + 6);
+      startDateStr = formatDateString(startDate);
+      endDateStr = formatDateString(endDate);
     } else if (period === 'month') {
       // Current calendar month
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      startDateStr = formatDateString(startDate);
+      endDateStr = formatDateString(endDate);
     } else if (period === 'quarter') {
       // Current quarter
       const quarter = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), quarter * 3, 1);
-      endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+      const startDate = new Date(now.getFullYear(), quarter * 3, 1);
+      const endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+      startDateStr = formatDateString(startDate);
+      endDateStr = formatDateString(endDate);
     } else {
       // Default: today only
-      startDate = new Date(now);
-      startDate.setHours(0, 0, 0, 0);
-      endDate = new Date(now);
+      startDateStr = formatDateString(now);
+      endDateStr = formatDateString(now);
     }
     
+    // FIX: Compare date strings directly instead of Date objects
     return Object.entries(userKPIs).reduce((acc, [date, kpi]) => {
-      const kpiDate = new Date(date);
-      if (kpiDate >= startDate && kpiDate <= endDate) {
+      if (date >= startDateStr && date <= endDateStr) {
         return {
           offers: acc.offers + (kpi.offers || 0),
           texts: acc.texts + (kpi.new_agents || 0) + (kpi.follow_ups || 0),
