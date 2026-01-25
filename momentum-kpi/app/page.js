@@ -91,7 +91,6 @@ const generateInviteCode = () => {
   return code.slice(0, 4) + '-' + code.slice(4);
 };
 
-// Import pending offers from Google Sheet when a new user signs up
 const importPendingOffers = async (userId, userName, organizationId) => {
   try {
     const { data: pendingOffers } = await db.pendingOffers.getByNameAndOrg(userName, organizationId);
@@ -128,12 +127,35 @@ const importPendingOffers = async (userId, userName, organizationId) => {
   }
 };
 
-// Helper function to format date as YYYY-MM-DD string
 const formatDateString = (date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+// Tooltip component
+const Tooltip = ({ children, text }) => {
+  const [show, setShow] = useState(false);
+  
+  return (
+    <div className="relative inline-block">
+      <div 
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onClick={() => setShow(!show)}
+        className="cursor-help"
+      >
+        {children}
+      </div>
+      {show && (
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-xs rounded-lg whitespace-nowrap z-50 shadow-lg border border-slate-600">
+          {text}
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 // Avatar component
@@ -173,6 +195,130 @@ const UserAvatar = ({ user, size = 'md' }) => {
   );
 };
 
+// Sleek Offers Card Component
+const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
+  const percentage = Math.min((offers / goal) * 100, 100);
+  const isComplete = offers >= goal;
+  const isHalfway = offers >= goal / 2;
+  const isStarted = offers > 0;
+  
+  // Dynamic status based on progress
+  const getStatus = () => {
+    if (isComplete) return { emoji: '🔥', text: 'Goal Crushed!', color: 'text-green-400' };
+    if (percentage >= 75) return { emoji: '⚡', text: 'Almost there!', color: 'text-yellow-400' };
+    if (isHalfway) return { emoji: '💪', text: 'Halfway!', color: 'text-blue-400' };
+    if (isStarted) return { emoji: '🎯', text: 'Keep going!', color: 'text-slate-400' };
+    return { emoji: '📋', text: 'Start strong!', color: 'text-slate-500' };
+  };
+  
+  const status = getStatus();
+  
+  // Dynamic gradient based on progress
+  const getGradient = () => {
+    if (isComplete) return 'from-green-500 via-emerald-400 to-green-500';
+    if (percentage >= 75) return 'from-yellow-500 via-amber-400 to-yellow-500';
+    if (isHalfway) return 'from-blue-500 via-cyan-400 to-blue-500';
+    if (isStarted) return 'from-blue-600 via-blue-500 to-blue-600';
+    return 'from-slate-600 to-slate-600';
+  };
+  
+  // Glow effect for high progress
+  const getGlow = () => {
+    if (isComplete) return 'shadow-lg shadow-green-500/30';
+    if (percentage >= 75) return 'shadow-lg shadow-yellow-500/20';
+    return '';
+  };
+
+  return (
+    <div className={`bg-gradient-to-br from-slate-800 to-slate-800/50 rounded-xl p-5 border border-slate-700 ${getGlow()} transition-all duration-500`}>
+      {/* Header */}
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex items-center gap-2">
+          <span className="text-white font-bold text-lg">Offers Submitted</span>
+          {isGoogleSync && (
+            <Tooltip text="📊 Auto-synced from Google Sheet">
+              <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-600 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                </svg>
+              </div>
+            </Tooltip>
+          )}
+        </div>
+        <div className={`text-sm font-medium ${status.color}`}>
+          {status.emoji} {status.text}
+        </div>
+      </div>
+      
+      {/* Main Number Display */}
+      <div className="flex items-end justify-center gap-2 mb-4">
+        <span className={`text-6xl font-black tracking-tight transition-all duration-300 ${
+          isComplete ? 'text-green-400 drop-shadow-[0_0_15px_rgba(74,222,128,0.5)]' : 
+          percentage >= 75 ? 'text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.4)]' :
+          isHalfway ? 'text-blue-400' : 'text-white'
+        }`}>
+          {offers}
+        </span>
+        <span className="text-2xl text-slate-500 font-medium mb-2">/ {goal}</span>
+      </div>
+      
+      {/* Progress Bar */}
+      <div className="relative mb-4">
+        <div className="w-full bg-slate-700/50 rounded-full h-4 overflow-hidden">
+          <div 
+            className={`h-full rounded-full bg-gradient-to-r ${getGradient()} transition-all duration-500 ease-out relative`}
+            style={{ width: `${percentage}%` }}
+          >
+            {/* Shine effect */}
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+            {/* Animated pulse for complete */}
+            {isComplete && (
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
+            )}
+          </div>
+        </div>
+        {/* Percentage label */}
+        <div className="absolute -top-6 right-0 text-xs font-medium text-slate-400">
+          {Math.round(percentage)}%
+        </div>
+      </div>
+      
+      {/* Milestone markers */}
+      <div className="flex justify-between text-xs text-slate-500 mb-4">
+        <span>0</span>
+        <span className={percentage >= 25 ? 'text-slate-400' : ''}>{Math.round(goal * 0.25)}</span>
+        <span className={percentage >= 50 ? 'text-blue-400' : ''}>{Math.round(goal * 0.5)}</span>
+        <span className={percentage >= 75 ? 'text-yellow-400' : ''}>{Math.round(goal * 0.75)}</span>
+        <span className={percentage >= 100 ? 'text-green-400' : ''}>{goal}</span>
+      </div>
+      
+      {/* Action Buttons - only show if not Google synced */}
+      {!isGoogleSync && (
+        <div className="flex gap-2">
+          <button 
+            onClick={() => onUpdate(offers - 1)} 
+            className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-lg font-medium transition-colors"
+          >
+            -1
+          </button>
+          <button 
+            onClick={() => onUpdate(offers + 1)} 
+            className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white py-2.5 rounded-lg font-semibold transition-all shadow-lg shadow-green-600/20"
+          >
+            +1
+          </button>
+          <button 
+            onClick={() => onUpdate(offers + 5)} 
+            className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white py-2.5 rounded-lg font-semibold transition-all shadow-lg shadow-green-600/20"
+          >
+            +5
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function MomentumApp() {
   const [view, setView] = useState('loading');
   const [authMode, setAuthMode] = useState('login');
@@ -192,19 +338,16 @@ export default function MomentumApp() {
   const [analyticsPeriod, setAnalyticsPeriod] = useState('daily');
   const [historyDate, setHistoryDate] = useState(new Date().toISOString().split('T')[0]);
   
-  // Profile editing state
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileForm, setProfileForm] = useState({ display_name: '', avatar_emoji: '', avatar_url: '' });
   const [profileSaving, setProfileSaving] = useState(false);
   const fileInputRef = useRef(null);
   
-  // KPI Goals editing state (for owners)
   const [kpiGoals, setKpiGoals] = useState(DEFAULT_KPI_GOALS);
   const [kpiSaving, setKpiSaving] = useState(false);
 
   const today = new Date().toISOString().split('T')[0];
 
-  // Get KPI goals from organization or use defaults
   const getGoals = () => {
     if (organization?.kpi_goals) {
       return { ...DEFAULT_KPI_GOALS, ...organization.kpi_goals };
@@ -221,7 +364,6 @@ export default function MomentumApp() {
   useEffect(() => {
     if (currentUser && organization) {
       loadTeamData();
-      // Load KPI goals from organization
       if (organization.kpi_goals) {
         setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
       }
@@ -431,7 +573,6 @@ export default function MomentumApp() {
     loadTeamData();
   };
 
-  // Profile update functions
   const openProfileModal = () => {
     setProfileForm({
       display_name: currentUser.display_name || '',
@@ -456,7 +597,6 @@ export default function MomentumApp() {
       setCurrentUser(updatedUser);
       localStorage.setItem('momentum_user', JSON.stringify(updatedUser));
       
-      // Update in team members list
       setTeamMembers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
       
       setShowProfileModal(false);
@@ -470,7 +610,7 @@ export default function MomentumApp() {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    if (file.size > 500000) { // 500KB limit
+    if (file.size > 500000) {
       alert('Image too large. Please use an image under 500KB.');
       return;
     }
@@ -480,7 +620,7 @@ export default function MomentumApp() {
       setProfileForm(prev => ({
         ...prev,
         avatar_url: reader.result,
-        avatar_emoji: '' // Clear emoji if uploading image
+        avatar_emoji: ''
       }));
     };
     reader.readAsDataURL(file);
@@ -490,7 +630,7 @@ export default function MomentumApp() {
     setProfileForm(prev => ({
       ...prev,
       avatar_emoji: emoji,
-      avatar_url: '' // Clear image if selecting emoji
+      avatar_url: ''
     }));
   };
 
@@ -502,7 +642,6 @@ export default function MomentumApp() {
     }));
   };
 
-  // KPI Goals update function (owner only)
   const handleKpiGoalsSave = async () => {
     setKpiSaving(true);
     try {
@@ -779,12 +918,10 @@ export default function MomentumApp() {
             <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md border border-slate-700">
               <h2 className="text-xl font-bold text-white mb-4">Edit Profile</h2>
               
-              {/* Current Avatar Preview */}
               <div className="flex justify-center mb-4">
                 <UserAvatar user={{ ...currentUser, ...profileForm }} size="xl" />
               </div>
               
-              {/* Display Name */}
               <div className="mb-4">
                 <label className="text-slate-400 text-sm mb-1 block">Display Name</label>
                 <input 
@@ -797,11 +934,9 @@ export default function MomentumApp() {
                 <p className="text-slate-500 text-xs mt-1">Leave blank to use your signup name: {currentUser?.name}</p>
               </div>
               
-              {/* Avatar Options */}
               <div className="mb-4">
                 <label className="text-slate-400 text-sm mb-2 block">Avatar</label>
                 
-                {/* Upload Photo */}
                 <input 
                   type="file" 
                   ref={fileInputRef}
@@ -816,7 +951,6 @@ export default function MomentumApp() {
                   📷 Upload Photo
                 </button>
                 
-                {/* Emoji Picker */}
                 <p className="text-slate-500 text-xs mb-2">Or choose an emoji:</p>
                 <div className="grid grid-cols-10 gap-1 bg-slate-700 p-2 rounded-lg max-h-32 overflow-y-auto">
                   {AVATAR_EMOJIS.map(emoji => (
@@ -830,7 +964,6 @@ export default function MomentumApp() {
                   ))}
                 </div>
                 
-                {/* Clear Avatar */}
                 {(profileForm.avatar_emoji || profileForm.avatar_url) && (
                   <button 
                     onClick={clearAvatar}
@@ -841,7 +974,6 @@ export default function MomentumApp() {
                 )}
               </div>
               
-              {/* Buttons */}
               <div className="flex gap-3">
                 <button 
                   onClick={() => setShowProfileModal(false)}
@@ -876,7 +1008,6 @@ export default function MomentumApp() {
               <p className="text-green-400 text-sm">{getMotivation()}</p>
             </div>
             <div className="flex items-center gap-3">
-              {/* Clickable Avatar */}
               <button onClick={openProfileModal} className="hover:opacity-80 transition">
                 <UserAvatar user={currentUser} size="md" />
               </button>
@@ -916,28 +1047,13 @@ export default function MomentumApp() {
               </button>
             </div>
 
-            {/* Offers Submitted */}
-            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-              <div className="flex justify-between items-center mb-2">
-                <div>
-                  <span className="text-white font-bold">Offers Submitted</span>
-                  {organization?.google_sheet_sync && (
-                    <p className="text-xs text-green-400">📊 Synced from Google Sheet</p>
-                  )}
-                </div>
-                <span className="text-white text-2xl font-bold">{myKPI.offers || 0}/{goals.daily_offers}</span>
-              </div>
-              <div className="w-full bg-slate-700 rounded-full h-3 mb-2">
-                <div className={`h-3 rounded-full ${pColor(myKPI.offers || 0, goals.daily_offers)}`} style={{ width: `${pct(myKPI.offers || 0, goals.daily_offers)}%` }}></div>
-              </div>
-              {!organization?.google_sheet_sync && (
-                <div className="flex gap-2">
-                  <button onClick={() => updateKPI('offers', (myKPI.offers || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded">-1</button>
-                  <button onClick={() => updateKPI('offers', (myKPI.offers || 0) + 1)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded">+1</button>
-                  <button onClick={() => updateKPI('offers', (myKPI.offers || 0) + 5)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded">+5</button>
-                </div>
-              )}
-            </div>
+            {/* Sleek Offers Card */}
+            <OffersCard 
+              offers={myKPI.offers || 0}
+              goal={goals.daily_offers}
+              isGoogleSync={organization?.google_sheet_sync}
+              onUpdate={(value) => updateKPI('offers', value)}
+            />
 
             {/* Phone Conversations */}
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
