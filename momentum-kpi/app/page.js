@@ -45,7 +45,7 @@ const db = {
   },
   kpis: {
     getByOrg: (orgId, userIds) => supabaseFetch(`daily_kpis?user_id=in.(${userIds.join(',')})&select=*`),
-    upsert: (kpi) => supabaseFetch('daily_kpis', {
+    upsert: (kpi) => supabaseFetch('daily_kpis?on_conflict=user_id,date', {
       method: 'POST',
       body: [kpi],
       prefer: 'return=representation,resolution=merge-duplicates'
@@ -304,7 +304,7 @@ export default function MomentumApp() {
     }));
 
     // Save to database
-    await db.kpis.upsert({
+    const { data, error } = await db.kpis.upsert({
       user_id: currentUser.id,
       date: today,
       offers: updated.offers || 0,
@@ -315,6 +315,13 @@ export default function MomentumApp() {
       deals_closed: updated.deals_closed || 0,
       notes: updated.notes || ''
     });
+
+    // Log for debugging
+    if (error) {
+      console.error('KPI save failed:', error);
+    } else {
+      console.log('KPI saved successfully:', data);
+    }
   };
 
   const getStats = (userId, days) => {
