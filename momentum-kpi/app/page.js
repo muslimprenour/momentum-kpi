@@ -52,8 +52,8 @@ const db = {
     }),
   },
   pendingOffers: {
-    getByName: (name) => supabaseFetch(`pending_offers?rep_name=ilike.${encodeURIComponent(name)}&select=*`),
-    delete: (name) => supabaseFetch(`pending_offers?rep_name=ilike.${encodeURIComponent(name)}`, {
+    getByNameAndOrg: (name, orgId) => supabaseFetch(`pending_offers?rep_name=ilike.${encodeURIComponent(name)}&organization_id=eq.${orgId}&select=*`),
+    deleteByNameAndOrg: (name, orgId) => supabaseFetch(`pending_offers?rep_name=ilike.${encodeURIComponent(name)}&organization_id=eq.${orgId}`, {
       method: 'DELETE'
     }),
   }
@@ -67,13 +67,13 @@ const generateInviteCode = () => {
 };
 
 // Import pending offers from Google Sheet when a new user signs up
-const importPendingOffers = async (userId, userName) => {
+const importPendingOffers = async (userId, userName, organizationId) => {
   try {
-    // Get all pending offers for this user name (case-insensitive)
-    const { data: pendingOffers } = await db.pendingOffers.getByName(userName);
+    // Get all pending offers for this user name in this organization
+    const { data: pendingOffers } = await db.pendingOffers.getByNameAndOrg(userName, organizationId);
     
     if (!pendingOffers || pendingOffers.length === 0) {
-      console.log(`No pending offers found for ${userName}`);
+      console.log(`No pending offers found for ${userName} in org ${organizationId}`);
       return 0;
     }
     
@@ -96,7 +96,7 @@ const importPendingOffers = async (userId, userName) => {
     }
     
     // Delete the pending records (they're now in daily_kpis)
-    await db.pendingOffers.delete(userName);
+    await db.pendingOffers.deleteByNameAndOrg(userName, organizationId);
     console.log(`Deleted pending offers for ${userName}`);
     
     return pendingOffers.length;
@@ -225,7 +225,7 @@ export default function MomentumApp() {
     const user = userData[0];
     
     // Import any pending offers from Google Sheet for this user
-    await importPendingOffers(user.id, user.name);
+    await importPendingOffers(user.id, user.name, org.id);
     
     localStorage.setItem('momentum_user', JSON.stringify(user));
     setCurrentUser(user);
@@ -269,7 +269,7 @@ export default function MomentumApp() {
     await db.invites.use(invite.code, user.id);
     
     // Import any pending offers from Google Sheet for this user
-    await importPendingOffers(user.id, user.name);
+    await importPendingOffers(user.id, user.name, invite.organization_id);
     
     const { data: orgs } = await db.orgs.getById(invite.organization_id);
     localStorage.setItem('momentum_user', JSON.stringify(user));
