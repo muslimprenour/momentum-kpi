@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const SUPABASE_URL = 'https://bnzbaywpfzfochqurqte.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuemJheXdwZnpmb2NocXVycXRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMTU0MTYsImV4cCI6MjA4NDg5MTQxNn0._d0wNc0kzacLHAUYT1Iafx4LeKjrQA8NGhXScz4xu60';
@@ -37,15 +37,19 @@ const db = {
   invites: {
     getByCode: (code) => supabaseFetch(`invites?code=eq.${code}&is_active=eq.true&select=*`),
     create: (invite) => supabaseFetch('invites', { method: 'POST', body: [invite] }),
-    use: (code, userId) => supabaseFetch(`invites?code=eq.${code}`, { 
-      method: 'PATCH', 
+    use: (code, userId) => supabaseFetch(`invites?code=eq.${code}`, {
+      method: 'PATCH',
       body: { used_by: userId, used_at: new Date().toISOString(), is_active: false }
     }),
     getByOrg: (orgId) => supabaseFetch(`invites?organization_id=eq.${orgId}&select=*`),
   },
   kpis: {
     getByOrg: (orgId, userIds) => supabaseFetch(`daily_kpis?user_id=in.(${userIds.join(',')})&select=*`),
-    upsert: (kpi) => supabaseFetch('daily_kpis', { method: 'POST', body: [kpi], prefer: 'return=representation,resolution=merge-duplicates' }),
+    upsert: (kpi) => supabaseFetch('daily_kpis', {
+      method: 'POST',
+      body: [kpi],
+      prefer: 'return=representation,resolution=merge-duplicates'
+    }),
   }
 };
 
@@ -53,7 +57,7 @@ const generateInviteCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code.slice(0,4) + '-' + code.slice(4);
+  return code.slice(0, 4) + '-' + code.slice(4);
 };
 
 export default function MomentumApp() {
@@ -65,7 +69,6 @@ export default function MomentumApp() {
   const [teamKPIs, setTeamKPIs] = useState({});
   const [invites, setInvites] = useState([]);
   const [currentTime, setCurrentTime] = useState(new Date());
-  
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [signupForm, setSignupForm] = useState({ name: '', email: '', password: '', confirm: '', inviteCode: '', orgName: '' });
   const [forgotEmail, setForgotEmail] = useState('');
@@ -75,6 +78,10 @@ export default function MomentumApp() {
   const [leaderboardPeriod, setLeaderboardPeriod] = useState('week');
   const [analyticsPeriod, setAnalyticsPeriod] = useState('daily');
   const [historyDate, setHistoryDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // FIX: Add a ref to track when we're updating KPIs to prevent race conditions
+  const isUpdatingKPI = useRef(false);
+  const updateLockTimeout = useRef(null);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -109,6 +116,13 @@ export default function MomentumApp() {
 
   const loadTeamData = async () => {
     if (!organization) return;
+
+    // FIX: Skip loading if we're in the middle of updating KPIs
+    if (isUpdatingKPI.current) {
+      console.log('Skipping loadTeamData - KPI update in progress');
+      return;
+    }
+
     const { data: users } = await db.users.getAll(organization.id);
     if (users) {
       setTeamMembers(users);
@@ -116,12 +130,15 @@ export default function MomentumApp() {
       if (userIds.length > 0) {
         const { data: kpis } = await db.kpis.getByOrg(organization.id, userIds);
         if (kpis) {
-          const grouped = {};
-          kpis.forEach(k => {
-            if (!grouped[k.user_id]) grouped[k.user_id] = {};
-            grouped[k.user_id][k.date] = k;
-          });
-          setTeamKPIs(grouped);
+          // FIX: Double-check we're still not updating before setting state
+          if (!isUpdatingKPI.current) {
+            const grouped = {};
+            kpis.forEach(k => {
+              if (!grouped[k.user_id]) grouped[k.user_id] = {};
+              grouped[k.user_id][k.date] = k;
+            });
+            setTeamKPIs(grouped);
+          }
         }
       }
     }
@@ -143,20 +160,17 @@ export default function MomentumApp() {
       setError('Password must be at least 6 characters');
       return;
     }
-
     const { data: existing } = await db.users.getByEmail(signupForm.email);
     if (existing?.length > 0) {
       setError('Email already registered');
       return;
     }
-
     const { data: orgData, error: orgError } = await db.orgs.create({ name: signupForm.orgName });
     if (orgError || !orgData?.[0]) {
       setError('Failed to create organization');
       return;
     }
     const org = orgData[0];
-
     const { data: userData, error: userError } = await db.users.create({
       name: signupForm.name,
       email: signupForm.email.toLowerCase().trim(),
@@ -164,12 +178,10 @@ export default function MomentumApp() {
       role: 'owner',
       organization_id: org.id
     });
-
     if (userError || !userData?.[0]) {
       setError('Failed to create account');
       return;
     }
-
     const user = userData[0];
     localStorage.setItem('momentum_user', JSON.stringify(user));
     setCurrentUser(user);
@@ -187,20 +199,17 @@ export default function MomentumApp() {
       setError('Passwords do not match');
       return;
     }
-
     const { data: inviteData } = await db.invites.getByCode(signupForm.inviteCode.toUpperCase());
     if (!inviteData?.[0]) {
       setError('Invalid or expired invite code');
       return;
     }
     const invite = inviteData[0];
-
     const { data: existing } = await db.users.getByEmail(signupForm.email);
     if (existing?.length > 0) {
       setError('Email already registered');
       return;
     }
-
     const { data: userData, error: userError } = await db.users.create({
       name: signupForm.name,
       email: signupForm.email.toLowerCase().trim(),
@@ -208,17 +217,13 @@ export default function MomentumApp() {
       role: 'member',
       organization_id: invite.organization_id
     });
-
     if (userError || !userData?.[0]) {
       setError('Failed to create account');
       return;
     }
-
     const user = userData[0];
     await db.invites.use(invite.code, user.id);
-
     const { data: orgs } = await db.orgs.getById(invite.organization_id);
-    
     localStorage.setItem('momentum_user', JSON.stringify(user));
     setCurrentUser(user);
     setOrganization(orgs?.[0] || null);
@@ -229,14 +234,11 @@ export default function MomentumApp() {
     setError('');
     const { data: users } = await db.users.getByEmail(loginForm.email);
     const user = users?.find(u => u.password_hash === loginForm.password);
-    
     if (!user) {
       setError('Invalid email or password');
       return;
     }
-
     const { data: orgs } = await db.orgs.getById(user.organization_id);
-    
     localStorage.setItem('momentum_user', JSON.stringify(user));
     setCurrentUser(user);
     setOrganization(orgs?.[0] || null);
@@ -277,35 +279,71 @@ export default function MomentumApp() {
     loadTeamData();
   };
 
-  const getMyKPI = () => teamKPIs[currentUser?.id]?.[today] || { offers: 0, new_agents: 0, follow_ups: 0, phone_calls: 0, deals_under_contract: 0, deals_closed: 0, notes: '' };
+  const getMyKPI = () => teamKPIs[currentUser?.id]?.[today] || {
+    offers: 0,
+    new_agents: 0,
+    follow_ups: 0,
+    phone_calls: 0,
+    deals_under_contract: 0,
+    deals_closed: 0,
+    notes: ''
+  };
 
+  // FIX: Completely rewritten updateKPI with proper locking mechanism
   const updateKPI = async (field, value) => {
     const current = getMyKPI();
-    const updated = { ...current, [field]: typeof value === 'string' ? value : Math.max(0, value), user_id: currentUser.id, date: today };
+    const newValue = typeof value === 'string' ? value : Math.max(0, value);
     
+    const updated = {
+      ...current,
+      [field]: newValue,
+      user_id: currentUser.id,
+      date: today
+    };
+
+    // Set lock to prevent loadTeamData from overwriting
+    isUpdatingKPI.current = true;
+    
+    // Clear any existing timeout
+    if (updateLockTimeout.current) {
+      clearTimeout(updateLockTimeout.current);
+    }
+
+    // Optimistic UI update
     setTeamKPIs(prev => ({
       ...prev,
-      [currentUser.id]: { ...prev[currentUser.id], [today]: updated }
+      [currentUser.id]: {
+        ...prev[currentUser.id],
+        [today]: updated
+      }
     }));
 
-    await db.kpis.upsert({
-      user_id: currentUser.id,
-      date: today,
-      offers: updated.offers || 0,
-      new_agents: updated.new_agents || 0,
-      follow_ups: updated.follow_ups || 0,
-      phone_calls: updated.phone_calls || 0,
-      deals_under_contract: updated.deals_under_contract || 0,
-      deals_closed: updated.deals_closed || 0,
-      notes: updated.notes || ''
-    });
+    try {
+      // Save to database
+      await db.kpis.upsert({
+        user_id: currentUser.id,
+        date: today,
+        offers: updated.offers || 0,
+        new_agents: updated.new_agents || 0,
+        follow_ups: updated.follow_ups || 0,
+        phone_calls: updated.phone_calls || 0,
+        deals_under_contract: updated.deals_under_contract || 0,
+        deals_closed: updated.deals_closed || 0,
+        notes: updated.notes || ''
+      });
+    } finally {
+      // Release lock after a short delay to ensure DB has synced
+      // This prevents the auto-refresh from immediately fetching stale data
+      updateLockTimeout.current = setTimeout(() => {
+        isUpdatingKPI.current = false;
+      }, 2000); // 2 second buffer after save completes
+    }
   };
 
   const getStats = (userId, days) => {
     const userKPIs = teamKPIs[userId] || {};
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
-    
     return Object.entries(userKPIs).reduce((acc, [date, kpi]) => {
       if (new Date(date) >= cutoff) {
         return {
@@ -331,7 +369,13 @@ export default function MomentumApp() {
         contracts: kpi.deals_under_contract || 0,
         closed: kpi.deals_closed || 0
       } : kpi;
-      return { offers: t.offers + s.offers, texts: t.texts + s.texts, calls: t.calls + s.calls, contracts: t.contracts + s.contracts, closed: t.closed + s.closed };
+      return {
+        offers: t.offers + s.offers,
+        texts: t.texts + s.texts,
+        calls: t.calls + s.calls,
+        contracts: t.contracts + s.contracts,
+        closed: t.closed + s.closed
+      };
     }, { offers: 0, texts: 0, calls: 0, contracts: 0, closed: 0 });
   };
 
@@ -339,7 +383,11 @@ export default function MomentumApp() {
     const days = leaderboardPeriod === 'week' ? 7 : 30;
     return teamMembers.map(user => {
       const s = getStats(user.id, days);
-      return { user, stats: s, score: s.offers + s.texts + s.calls + s.contracts * 10 + s.closed * 20 };
+      return {
+        user,
+        stats: s,
+        score: s.offers + s.texts + s.calls + s.contracts * 10 + s.closed * 20
+      };
     }).sort((a, b) => b.score - a.score);
   };
 
@@ -347,7 +395,7 @@ export default function MomentumApp() {
     let csv = 'Member,Date,Offers,New Agents,Follow Ups,Calls,Deals UC,Deals Closed,Notes\n';
     teamMembers.forEach(user => {
       Object.entries(teamKPIs[user.id] || {}).forEach(([date, k]) => {
-        csv += `"${user.name}","${date}",${k.offers||0},${k.new_agents||0},${k.follow_ups||0},${k.phone_calls||0},${k.deals_under_contract||0},${k.deals_closed||0},"${(k.notes||'').replace(/"/g,'""')}"\n`;
+        csv += `"${user.name}","${date}",${k.offers || 0},${k.new_agents || 0},${k.follow_ups || 0},${k.phone_calls || 0},${k.deals_under_contract || 0},${k.deals_closed || 0},"${(k.notes || '').replace(/"/g, '""')}"\n`;
       });
     });
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -363,7 +411,7 @@ export default function MomentumApp() {
     s += `TEAM: ${t.offers} offers | ${t.texts} texts | ${t.calls} calls\n\n`;
     teamMembers.forEach(u => {
       const k = teamKPIs[u.id]?.[today] || {};
-      s += `${u.name}: ${k.offers||0} offers, ${(k.new_agents||0)+(k.follow_ups||0)} texts, ${k.phone_calls||0} calls\n`;
+      s += `${u.name}: ${k.offers || 0} offers, ${(k.new_agents || 0) + (k.follow_ups || 0)} texts, ${k.phone_calls || 0} calls\n`;
     });
     navigator.clipboard.writeText(s);
     alert('Copied!');
@@ -388,7 +436,11 @@ export default function MomentumApp() {
 
   // LOADING
   if (view === 'loading') {
-    return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><div className="text-white text-xl">⚡ Loading...</div></div>;
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-white text-xl">⚡ Loading...</div>
+      </div>
+    );
   }
 
   // AUTH SCREEN
@@ -412,8 +464,8 @@ export default function MomentumApp() {
 
           {authMode === 'login' && (
             <div className="space-y-4">
-              <input type="email" placeholder="Email" value={loginForm.email} onChange={e => setLoginForm({...loginForm, email: e.target.value})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
-              <input type="password" placeholder="Password" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="email" placeholder="Email" value={loginForm.email} onChange={e => setLoginForm({ ...loginForm, email: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="password" placeholder="Password" value={loginForm.password} onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
               <button onClick={handleLogin} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">Login</button>
               <button onClick={() => { setAuthMode('forgot'); setError(''); setRecoveredPassword(''); }} className="w-full text-slate-400 hover:text-white text-sm transition">Forgot Password?</button>
             </div>
@@ -421,22 +473,22 @@ export default function MomentumApp() {
 
           {authMode === 'owner' && (
             <div className="space-y-4">
-              <input type="text" placeholder="Organization Name" value={signupForm.orgName} onChange={e => setSignupForm({...signupForm, orgName: e.target.value})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
-              <input type="text" placeholder="Your Name" value={signupForm.name} onChange={e => setSignupForm({...signupForm, name: e.target.value})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
-              <input type="email" placeholder="Email" value={signupForm.email} onChange={e => setSignupForm({...signupForm, email: e.target.value})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
-              <input type="password" placeholder="Password" value={signupForm.password} onChange={e => setSignupForm({...signupForm, password: e.target.value})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
-              <input type="password" placeholder="Confirm Password" value={signupForm.confirm} onChange={e => setSignupForm({...signupForm, confirm: e.target.value})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="text" placeholder="Organization Name" value={signupForm.orgName} onChange={e => setSignupForm({ ...signupForm, orgName: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="text" placeholder="Your Name" value={signupForm.name} onChange={e => setSignupForm({ ...signupForm, name: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="email" placeholder="Email" value={signupForm.email} onChange={e => setSignupForm({ ...signupForm, email: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="password" placeholder="Password" value={signupForm.password} onChange={e => setSignupForm({ ...signupForm, password: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="password" placeholder="Confirm Password" value={signupForm.confirm} onChange={e => setSignupForm({ ...signupForm, confirm: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
               <button onClick={handleOwnerSignup} className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition">Create Team</button>
             </div>
           )}
 
           {authMode === 'member' && (
             <div className="space-y-4">
-              <input type="text" placeholder="Invite Code (e.g. ABCD-1234)" value={signupForm.inviteCode} onChange={e => setSignupForm({...signupForm, inviteCode: e.target.value.toUpperCase()})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none font-mono text-center text-lg tracking-widest" />
-              <input type="text" placeholder="Your Name" value={signupForm.name} onChange={e => setSignupForm({...signupForm, name: e.target.value})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
-              <input type="email" placeholder="Email" value={signupForm.email} onChange={e => setSignupForm({...signupForm, email: e.target.value})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
-              <input type="password" placeholder="Password" value={signupForm.password} onChange={e => setSignupForm({...signupForm, password: e.target.value})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
-              <input type="password" placeholder="Confirm Password" value={signupForm.confirm} onChange={e => setSignupForm({...signupForm, confirm: e.target.value})} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="text" placeholder="Invite Code (e.g. ABCD-1234)" value={signupForm.inviteCode} onChange={e => setSignupForm({ ...signupForm, inviteCode: e.target.value.toUpperCase() })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none font-mono text-center text-lg tracking-widest" />
+              <input type="text" placeholder="Your Name" value={signupForm.name} onChange={e => setSignupForm({ ...signupForm, name: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="email" placeholder="Email" value={signupForm.email} onChange={e => setSignupForm({ ...signupForm, email: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="password" placeholder="Password" value={signupForm.password} onChange={e => setSignupForm({ ...signupForm, password: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="password" placeholder="Confirm Password" value={signupForm.confirm} onChange={e => setSignupForm({ ...signupForm, confirm: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
               <button onClick={handleMemberSignup} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-lg transition">Join Team</button>
             </div>
           )}
@@ -488,6 +540,7 @@ export default function MomentumApp() {
               <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm">Logout</button>
             </div>
           </div>
+
           <div className="flex gap-2 mt-4 flex-wrap">
             {['personal', 'team', 'analytics', 'history'].map(tab => (
               <button key={tab} onClick={() => setCurrentTab(tab)} className={`px-4 py-2 rounded-lg font-semibold transition ${currentTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
@@ -500,7 +553,7 @@ export default function MomentumApp() {
           </div>
         </div>
 
-        {/* PERSONAL */}
+        {/* PERSONAL TAB */}
         {currentTab === 'personal' && (
           <div className="space-y-4">
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
@@ -574,17 +627,17 @@ export default function MomentumApp() {
 
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
               <p className="text-white font-bold mb-2">📝 Daily Notes</p>
-              <textarea 
-                value={myKPI.notes || ''} 
-                onChange={e => updateKPI('notes', e.target.value)} 
-                placeholder="Notes for today..." 
+              <textarea
+                value={myKPI.notes || ''}
+                onChange={e => updateKPI('notes', e.target.value)}
+                placeholder="Notes for today..."
                 className="w-full bg-slate-700 text-white rounded-lg p-3 border border-slate-600 focus:border-blue-500 focus:outline-none min-h-24 resize-y"
               />
             </div>
           </div>
         )}
 
-        {/* TEAM */}
+        {/* TEAM TAB */}
         {currentTab === 'team' && (
           <div className="space-y-4">
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
@@ -598,7 +651,7 @@ export default function MomentumApp() {
               </div>
               {getLeaderboard().map((e, i) => (
                 <div key={e.user.id} className="bg-slate-700 rounded-lg p-4 mb-2 flex items-center gap-4">
-                  <span className="text-3xl">{['🥇','🥈','🥉','🏅'][i] || '🏅'}</span>
+                  <span className="text-3xl">{['🥇', '🥈', '🥉', '🏅'][i] || '🏅'}</span>
                   <div className="flex-1">
                     <p className="text-white font-bold">{e.user.name}</p>
                     <p className="text-slate-400 text-xs">Offers: {e.stats.offers} | Texts: {e.stats.texts} | Calls: {e.stats.calls}</p>
@@ -610,7 +663,7 @@ export default function MomentumApp() {
           </div>
         )}
 
-        {/* ANALYTICS */}
+        {/* ANALYTICS TAB */}
         {currentTab === 'analytics' && (
           <div className="space-y-4">
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
@@ -625,8 +678,13 @@ export default function MomentumApp() {
               <div className="grid grid-cols-5 gap-3">
                 {(() => {
                   const t = getTeamTotals(analyticsPeriod);
-                  const goals = { daily: [80,3200,80,1,1], weekly: [560,22400,560,8,2], monthly: [2400,96000,2400,8,20], quarterly: [7200,288000,7200,24,60] }[analyticsPeriod];
-                  return [['Offers',t.offers,goals[0]],['Texts',t.texts,goals[1]],['Calls',t.calls,goals[2]],['UC',t.contracts,goals[3]],['Closed',t.closed,goals[4]]].map(([n,v,g]) => (
+                  const goals = {
+                    daily: [80, 3200, 80, 1, 1],
+                    weekly: [560, 22400, 560, 8, 2],
+                    monthly: [2400, 96000, 2400, 8, 20],
+                    quarterly: [7200, 288000, 7200, 24, 60]
+                  }[analyticsPeriod];
+                  return [['Offers', t.offers, goals[0]], ['Texts', t.texts, goals[1]], ['Calls', t.calls, goals[2]], ['UC', t.contracts, goals[3]], ['Closed', t.closed, goals[4]]].map(([n, v, g]) => (
                     <div key={n} className="bg-slate-700 rounded-lg p-3 text-center">
                       <p className="text-slate-400 text-xs">{n}</p>
                       <p className="text-2xl font-bold text-white">{v}</p>
@@ -643,7 +701,7 @@ export default function MomentumApp() {
           </div>
         )}
 
-        {/* HISTORY */}
+        {/* HISTORY TAB */}
         {currentTab === 'history' && (
           <div className="space-y-4">
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
@@ -656,7 +714,7 @@ export default function MomentumApp() {
                 <div key={user.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700">
                   <h3 className="text-white font-bold mb-2">{user.name}</h3>
                   <div className="grid grid-cols-6 gap-2 text-sm">
-                    {[['Offers', k.offers],['New', k.new_agents],['Follow', k.follow_ups],['Calls', k.phone_calls],['UC', k.deals_under_contract],['Closed', k.deals_closed]].map(([l,v]) => (
+                    {[['Offers', k.offers], ['New', k.new_agents], ['Follow', k.follow_ups], ['Calls', k.phone_calls], ['UC', k.deals_under_contract], ['Closed', k.deals_closed]].map(([l, v]) => (
                       <div key={l} className="bg-slate-700 rounded p-2 text-center">
                         <p className="text-slate-400 text-xs">{l}</p>
                         <p className="text-white font-bold">{v || 0}</p>
@@ -670,12 +728,12 @@ export default function MomentumApp() {
           </div>
         )}
 
-        {/* ADMIN */}
+        {/* ADMIN TAB */}
         {currentTab === 'admin' && currentUser?.role === 'owner' && (
           <div className="space-y-4">
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
               <h2 className="text-xl font-bold text-white mb-4">👑 Admin Panel</h2>
-              
+
               <div className="mb-6">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-white font-semibold">Invite Codes</h3>
