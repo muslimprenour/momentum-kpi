@@ -628,26 +628,44 @@ export default function MomentumApp() {
               <p className="text-slate-400 text-sm">Your daily KPIs</p>
             </div>
 
-            {[
-              { label: 'Offers Submitted', field: 'offers', goal: 20, inc: [1, 5] },
-              { label: 'Phone Conversations', field: 'phone_calls', goal: 20, inc: [1, 5] },
-            ].map(({ label, field, goal, inc }) => (
-              <div key={field} className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-white font-bold">{label}</span>
-                  <span className="text-white text-2xl font-bold">{myKPI[field] || 0}/{goal}</span>
+            {/* Offers Submitted - Read-only if synced from Google Sheet, manual otherwise */}
+            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+              <div className="flex justify-between items-center mb-2">
+                <div>
+                  <span className="text-white font-bold">Offers Submitted</span>
+                  {organization?.google_sheet_sync && (
+                    <p className="text-xs text-green-400">📊 Synced from Google Sheet</p>
+                  )}
                 </div>
-                <div className="w-full bg-slate-700 rounded-full h-3 mb-2">
-                  <div className={`h-3 rounded-full ${pColor(myKPI[field] || 0, goal)}`} style={{ width: `${pct(myKPI[field] || 0, goal)}%` }}></div>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => updateKPI(field, (myKPI[field] || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded">-1</button>
-                  {inc.map(i => (
-                    <button key={i} onClick={() => updateKPI(field, (myKPI[field] || 0) + i)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded">+{i}</button>
-                  ))}
-                </div>
+                <span className="text-white text-2xl font-bold">{myKPI.offers || 0}/20</span>
               </div>
-            ))}
+              <div className="w-full bg-slate-700 rounded-full h-3 mb-2">
+                <div className={`h-3 rounded-full ${pColor(myKPI.offers || 0, 20)}`} style={{ width: `${pct(myKPI.offers || 0, 20)}%` }}></div>
+              </div>
+              {!organization?.google_sheet_sync && (
+                <div className="flex gap-2">
+                  <button onClick={() => updateKPI('offers', (myKPI.offers || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded">-1</button>
+                  <button onClick={() => updateKPI('offers', (myKPI.offers || 0) + 1)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded">+1</button>
+                  <button onClick={() => updateKPI('offers', (myKPI.offers || 0) + 5)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded">+5</button>
+                </div>
+              )}
+            </div>
+
+            {/* Phone Conversations - Manual entry */}
+            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-white font-bold">Phone Conversations</span>
+                <span className="text-white text-2xl font-bold">{myKPI.phone_calls || 0}/20</span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-3 mb-2">
+                <div className={`h-3 rounded-full ${pColor(myKPI.phone_calls || 0, 20)}`} style={{ width: `${pct(myKPI.phone_calls || 0, 20)}%` }}></div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded">-1</button>
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 1)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded">+1</button>
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 5)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded">+5</button>
+              </div>
+            </div>
 
             <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
               <div className="flex justify-between items-center mb-2">
