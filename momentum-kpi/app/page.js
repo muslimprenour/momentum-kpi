@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const SUPABASE_URL = 'https://bnzbaywpfzfochqurqte.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuemJheXdwZnpmb2NocXVycXRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMTU0MTYsImV4cCI6MjA4NDg5MTQxNn0._d0wNc0kzacLHAUYT1Iafx4LeKjrQA8NGhXScz4xu60';
@@ -79,10 +79,6 @@ export default function MomentumApp() {
   const [analyticsPeriod, setAnalyticsPeriod] = useState('daily');
   const [historyDate, setHistoryDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // FIX: Add a ref to track when we're updating KPIs to prevent race conditions
-  const isUpdatingKPI = useRef(false);
-  const updateLockTimeout = useRef(null);
-
   const today = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
@@ -91,13 +87,20 @@ export default function MomentumApp() {
     return () => clearInterval(timer);
   }, []);
 
+  // FIX: Load team data on login only, no auto-refresh interval
   useEffect(() => {
     if (currentUser && organization) {
       loadTeamData();
-      const interval = setInterval(loadTeamData, 30000);
-      return () => clearInterval(interval);
+      // REMOVED: Auto-refresh interval that was causing the bug
     }
   }, [currentUser, organization]);
+
+  // FIX: Refresh data when switching to team/analytics/history tabs (not personal)
+  useEffect(() => {
+    if (currentUser && organization && currentTab !== 'personal') {
+      loadTeamData();
+    }
+  }, [currentTab]);
 
   const checkSession = async () => {
     const saved = localStorage.getItem('momentum_user');
@@ -117,12 +120,6 @@ export default function MomentumApp() {
   const loadTeamData = async () => {
     if (!organization) return;
 
-    // FIX: Skip loading if we're in the middle of updating KPIs
-    if (isUpdatingKPI.current) {
-      console.log('Skipping loadTeamData - KPI update in progress');
-      return;
-    }
-
     const { data: users } = await db.users.getAll(organization.id);
     if (users) {
       setTeamMembers(users);
@@ -130,15 +127,12 @@ export default function MomentumApp() {
       if (userIds.length > 0) {
         const { data: kpis } = await db.kpis.getByOrg(organization.id, userIds);
         if (kpis) {
-          // FIX: Double-check we're still not updating before setting state
-          if (!isUpdatingKPI.current) {
-            const grouped = {};
-            kpis.forEach(k => {
-              if (!grouped[k.user_id]) grouped[k.user_id] = {};
-              grouped[k.user_id][k.date] = k;
-            });
-            setTeamKPIs(grouped);
-          }
+          const grouped = {};
+          kpis.forEach(k => {
+            if (!grouped[k.user_id]) grouped[k.user_id] = {};
+            grouped[k.user_id][k.date] = k;
+          });
+          setTeamKPIs(grouped);
         }
       }
     }
@@ -289,7 +283,6 @@ export default function MomentumApp() {
     notes: ''
   };
 
-  // FIX: Completely rewritten updateKPI with proper locking mechanism
   const updateKPI = async (field, value) => {
     const current = getMyKPI();
     const newValue = typeof value === 'string' ? value : Math.max(0, value);
@@ -301,14 +294,6 @@ export default function MomentumApp() {
       date: today
     };
 
-    // Set lock to prevent loadTeamData from overwriting
-    isUpdatingKPI.current = true;
-    
-    // Clear any existing timeout
-    if (updateLockTimeout.current) {
-      clearTimeout(updateLockTimeout.current);
-    }
-
     // Optimistic UI update
     setTeamKPIs(prev => ({
       ...prev,
@@ -318,26 +303,18 @@ export default function MomentumApp() {
       }
     }));
 
-    try {
-      // Save to database
-      await db.kpis.upsert({
-        user_id: currentUser.id,
-        date: today,
-        offers: updated.offers || 0,
-        new_agents: updated.new_agents || 0,
-        follow_ups: updated.follow_ups || 0,
-        phone_calls: updated.phone_calls || 0,
-        deals_under_contract: updated.deals_under_contract || 0,
-        deals_closed: updated.deals_closed || 0,
-        notes: updated.notes || ''
-      });
-    } finally {
-      // Release lock after a short delay to ensure DB has synced
-      // This prevents the auto-refresh from immediately fetching stale data
-      updateLockTimeout.current = setTimeout(() => {
-        isUpdatingKPI.current = false;
-      }, 2000); // 2 second buffer after save completes
-    }
+    // Save to database
+    await db.kpis.upsert({
+      user_id: currentUser.id,
+      date: today,
+      offers: updated.offers || 0,
+      new_agents: updated.new_agents || 0,
+      follow_ups: updated.follow_ups || 0,
+      phone_calls: updated.phone_calls || 0,
+      deals_under_contract: updated.deals_under_contract || 0,
+      deals_closed: updated.deals_closed || 0,
+      notes: updated.notes || ''
+    });
   };
 
   const getStats = (userId, days) => {
