@@ -64,6 +64,12 @@ const db = {
   pendingOffers: {
     getByNameAndOrg: (name, orgId) => supabaseFetch(`pending_offers?rep_name=ilike.${encodeURIComponent(name)}&organization_id=eq.${orgId}&select=*`),
     deleteByNameAndOrg: (name, orgId) => supabaseFetch(`pending_offers?rep_name=ilike.${encodeURIComponent(name)}&organization_id=eq.${orgId}`, { method: 'DELETE' }),
+  },
+  notes: {
+    getByUser: (userId) => supabaseFetch(`user_notes?user_id=eq.${userId}&select=*&order=updated_at.desc`),
+    create: (note) => supabaseFetch('user_notes', { method: 'POST', body: [note] }),
+    update: (noteId, updates) => supabaseFetch(`user_notes?id=eq.${noteId}`, { method: 'PATCH', body: updates }),
+    delete: (noteId) => supabaseFetch(`user_notes?id=eq.${noteId}`, { method: 'DELETE' }),
   }
 };
 
@@ -114,61 +120,12 @@ const CircularProgress = ({ percentage, size = 140, strokeWidth = 10 }) => {
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="transform -rotate-90" style={{ filter: color.glow }}>
-        {/* Background circle */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="#334155"
-          strokeWidth={strokeWidth}
-        />
-        {/* Progress circle */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color.stroke}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          className="transition-all duration-500 ease-out"
-        />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#334155" strokeWidth={strokeWidth} />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color.stroke} strokeWidth={strokeWidth} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={offset} className="transition-all duration-500 ease-out" />
       </svg>
-      {/* Center content */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`text-3xl font-bold ${percentage >= 100 ? 'text-green-400' : 'text-white'}`}>
-          {Math.round(percentage)}%
-        </span>
+        <span className={`text-3xl font-bold ${percentage >= 100 ? 'text-green-400' : 'text-white'}`}>{Math.round(percentage)}%</span>
       </div>
-    </div>
-  );
-};
-
-// Tooltip component
-const Tooltip = ({ children, content }) => {
-  const [show, setShow] = useState(false);
-  
-  return (
-    <div className="relative inline-flex">
-      <div 
-        onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
-        onClick={() => setShow(!show)}
-        className="cursor-help"
-      >
-        {children}
-      </div>
-      {show && (
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-50">
-          <div className="bg-slate-900 rounded-lg px-3 py-2 shadow-xl border border-slate-600 whitespace-nowrap">
-            {content}
-          </div>
-          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
-        </div>
-      )}
     </div>
   );
 };
@@ -201,26 +158,15 @@ const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
 
   return (
     <div className={`relative overflow-hidden rounded-2xl border ${isComplete ? 'border-green-500/30 bg-gradient-to-br from-green-950/40 via-slate-800 to-slate-800' : 'border-slate-700 bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900'}`}>
-      {/* Subtle gradient overlay */}
       {isComplete && <div className="absolute inset-0 bg-gradient-to-r from-green-500/5 to-transparent"></div>}
       
       <div className="relative p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
+          <div>
             <h3 className="text-lg font-semibold text-white">Offers Submitted</h3>
             {isGoogleSync && (
-              <Tooltip content={
-                <span className="text-sm">
-                  <span className="text-green-400 font-medium">📊 Synced from Google Sheet</span>
-                </span>
-              }>
-                <div className="w-5 h-5 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center text-green-400 hover:bg-green-500/30 transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
-                  </svg>
-                </div>
-              </Tooltip>
+              <p className="text-sm text-green-400 mt-0.5">📊 Synced from Google Sheet</p>
             )}
           </div>
           <div className={`flex items-center gap-1.5 text-sm font-medium ${status.color}`}>
@@ -231,54 +177,30 @@ const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
         
         {/* Main Content */}
         <div className="flex items-center gap-8">
-          {/* Circular Progress */}
           <CircularProgress percentage={percentage} size={130} strokeWidth={10} />
           
-          {/* Stats */}
           <div className="flex-1 space-y-4">
-            {/* Count Display */}
             <div>
               <div className="flex items-baseline gap-2">
-                <span className={`text-4xl font-bold tracking-tight ${isComplete ? 'text-green-400' : 'text-white'}`}>
-                  {offers}
-                </span>
+                <span className={`text-4xl font-bold tracking-tight ${isComplete ? 'text-green-400' : 'text-white'}`}>{offers}</span>
                 <span className="text-slate-500 text-lg font-medium">/ {goal}</span>
               </div>
               <p className="text-slate-500 text-sm mt-1">Daily Target</p>
             </div>
             
-            {/* Progress Bar */}
             <div>
               <div className="flex justify-between text-xs text-slate-500 mb-1.5">
                 <span>Progress</span>
                 <span>{Math.round(percentage)}%</span>
               </div>
               <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                <div 
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    isComplete ? 'bg-gradient-to-r from-green-500 to-emerald-400' :
-                    percentage >= 75 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' :
-                    percentage >= 50 ? 'bg-gradient-to-r from-blue-500 to-cyan-400' :
-                    'bg-gradient-to-r from-indigo-500 to-purple-400'
-                  }`}
-                  style={{ width: `${percentage}%` }}
-                />
+                <div className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-gradient-to-r from-green-500 to-emerald-400' : percentage >= 75 ? 'bg-gradient-to-r from-yellow-500 to-amber-400' : percentage >= 50 ? 'bg-gradient-to-r from-blue-500 to-cyan-400' : 'bg-gradient-to-r from-indigo-500 to-purple-400'}`} style={{ width: `${percentage}%` }} />
               </div>
             </div>
             
-            {/* Milestones */}
             <div className="flex items-center gap-2">
               {[25, 50, 75, 100].map((milestone) => (
-                <div 
-                  key={milestone}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all ${
-                    percentage >= milestone 
-                      ? milestone === 100 
-                        ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                        : 'bg-slate-700 text-slate-300'
-                      : 'bg-slate-800 text-slate-600 border border-slate-700'
-                  }`}
-                >
+                <div key={milestone} className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all ${percentage >= milestone ? milestone === 100 ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-slate-700 text-slate-300' : 'bg-slate-800 text-slate-600 border border-slate-700'}`}>
                   {percentage >= milestone && <span>✓</span>}
                   <span>{milestone}%</span>
                 </div>
@@ -287,29 +209,169 @@ const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
           </div>
         </div>
         
-        {/* Action Buttons */}
         {!isGoogleSync && (
           <div className="flex gap-2 mt-6 pt-4 border-t border-slate-700/50">
-            <button 
-              onClick={() => onUpdate(offers - 1)} 
-              className="flex-1 bg-slate-700/50 hover:bg-slate-700 text-slate-300 hover:text-white py-2.5 rounded-xl font-medium transition-all border border-slate-600/50"
-            >
-              − 1
-            </button>
-            <button 
-              onClick={() => onUpdate(offers + 1)} 
-              className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-indigo-500/20"
-            >
-              + 1
-            </button>
-            <button 
-              onClick={() => onUpdate(offers + 5)} 
-              className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-indigo-500/20"
-            >
-              + 5
-            </button>
+            <button onClick={() => onUpdate(offers - 1)} className="flex-1 bg-slate-700/50 hover:bg-slate-700 text-slate-300 hover:text-white py-2.5 rounded-xl font-medium transition-all border border-slate-600/50">− 1</button>
+            <button onClick={() => onUpdate(offers + 1)} className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-indigo-500/20">+ 1</button>
+            <button onClick={() => onUpdate(offers + 5)} className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-indigo-500/20">+ 5</button>
           </div>
         )}
+      </div>
+    </div>
+  );
+};
+
+// iOS-style Notes Component
+const NotesApp = ({ userId, notes, setNotes }) => {
+  const [selectedNote, setSelectedNote] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredNotes = notes.filter(note => 
+    note.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    note.content?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const createNewNote = async () => {
+    const newNote = {
+      user_id: userId,
+      title: 'New Note',
+      content: '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    const { data } = await db.notes.create(newNote);
+    if (data?.[0]) {
+      setNotes(prev => [data[0], ...prev]);
+      setSelectedNote(data[0]);
+      setEditTitle(data[0].title);
+      setEditContent(data[0].content || '');
+    }
+  };
+
+  const selectNote = (note) => {
+    setSelectedNote(note);
+    setEditTitle(note.title || '');
+    setEditContent(note.content || '');
+  };
+
+  const saveNote = async () => {
+    if (!selectedNote) return;
+    setIsSaving(true);
+    const updates = {
+      title: editTitle || 'Untitled',
+      content: editContent,
+      updated_at: new Date().toISOString()
+    };
+    await db.notes.update(selectedNote.id, updates);
+    setNotes(prev => prev.map(n => n.id === selectedNote.id ? { ...n, ...updates } : n));
+    setSelectedNote(prev => ({ ...prev, ...updates }));
+    setIsSaving(false);
+  };
+
+  const deleteNote = async () => {
+    if (!selectedNote) return;
+    if (!confirm('Delete this note?')) return;
+    await db.notes.delete(selectedNote.id);
+    setNotes(prev => prev.filter(n => n.id !== selectedNote.id));
+    setSelectedNote(null);
+    setEditTitle('');
+    setEditContent('');
+  };
+
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return date.toLocaleDateString('en-US', { weekday: 'long' });
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const getPreview = (content) => {
+    if (!content) return 'No additional text';
+    return content.substring(0, 50) + (content.length > 50 ? '...' : '');
+  };
+
+  return (
+    <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden" style={{ height: '500px' }}>
+      <div className="flex h-full">
+        {/* Sidebar */}
+        <div className="w-72 border-r border-slate-700 flex flex-col bg-slate-800/50">
+          <div className="p-4 border-b border-slate-700">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <span>📝</span> Notes
+              </h3>
+              <button onClick={createNewNote} className="w-8 h-8 bg-amber-500 hover:bg-amber-400 rounded-lg flex items-center justify-center text-white transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                  <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                </svg>
+              </button>
+            </div>
+            <div className="relative">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">
+                <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+              </svg>
+              <input type="text" placeholder="Search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-700/50 text-white rounded-lg pl-9 pr-4 py-2 text-sm border border-slate-600 focus:border-amber-500 focus:outline-none" />
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto">
+            {filteredNotes.length === 0 ? (
+              <div className="p-4 text-center text-slate-500 text-sm">
+                {notes.length === 0 ? 'No notes yet. Create one!' : 'No notes found'}
+              </div>
+            ) : (
+              filteredNotes.map(note => (
+                <div key={note.id} onClick={() => selectNote(note)} className={`p-3 border-b border-slate-700/50 cursor-pointer transition-colors ${selectedNote?.id === note.id ? 'bg-amber-500/20 border-l-2 border-l-amber-500' : 'hover:bg-slate-700/30'}`}>
+                  <h4 className="text-white font-medium text-sm truncate">{note.title || 'Untitled'}</h4>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-slate-500 text-xs">{formatDate(note.updated_at)}</span>
+                    <span className="text-slate-600 text-xs truncate">{getPreview(note.content)}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          
+          <div className="p-3 border-t border-slate-700 text-center">
+            <span className="text-slate-500 text-xs">{notes.length} {notes.length === 1 ? 'Note' : 'Notes'}</span>
+          </div>
+        </div>
+        
+        {/* Editor */}
+        <div className="flex-1 flex flex-col bg-slate-900/30">
+          {selectedNote ? (
+            <>
+              <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+                <div className="text-slate-500 text-xs">{selectedNote.updated_at && `Last edited ${formatDate(selectedNote.updated_at)}`}</div>
+                <div className="flex items-center gap-2">
+                  {isSaving && <span className="text-amber-400 text-xs">Saving...</span>}
+                  <button onClick={saveNote} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-white text-sm font-medium rounded-lg transition-colors">Save</button>
+                  <button onClick={deleteNote} className="p-1.5 text-slate-500 hover:text-red-400 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                      <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.519.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Title" className="px-4 py-3 bg-transparent text-white text-xl font-semibold border-none focus:outline-none placeholder-slate-600" />
+              <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} placeholder="Start typing..." className="flex-1 px-4 py-2 bg-transparent text-slate-300 text-sm resize-none border-none focus:outline-none placeholder-slate-600 leading-relaxed" />
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-slate-500">
+              <div className="text-center">
+                <div className="text-4xl mb-3">📝</div>
+                <p>Select a note or create a new one</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -339,20 +401,42 @@ export default function MomentumApp() {
   const fileInputRef = useRef(null);
   const [kpiGoals, setKpiGoals] = useState(DEFAULT_KPI_GOALS);
   const [kpiSaving, setKpiSaving] = useState(false);
+  const [userNotes, setUserNotes] = useState([]);
 
   const today = new Date().toISOString().split('T')[0];
 
   const getGoals = () => organization?.kpi_goals ? { ...DEFAULT_KPI_GOALS, ...organization.kpi_goals } : DEFAULT_KPI_GOALS;
 
+  const getMotivation = () => {
+    const h = currentTime.getHours();
+    const goals = getGoals();
+    const myKPI = getMyKPI();
+    const totalTexts = (myKPI.new_agents || 0) + (myKPI.follow_ups || 0);
+    
+    if ((myKPI.offers || 0) >= goals.daily_offers && totalTexts >= (goals.daily_new_agents + goals.daily_follow_ups)) {
+      return { emoji: '👑', text: 'LEGENDARY STATUS' };
+    }
+    if ((myKPI.offers || 0) >= goals.daily_offers) {
+      return { emoji: '🔥', text: 'ON FIRE TODAY' };
+    }
+    if (h < 9) return { emoji: '🌅', text: 'RISE & GRIND' };
+    if (h < 12) return { emoji: '⚡', text: 'PEAK HOURS' };
+    if (h < 15) return { emoji: '🚀', text: 'UNSTOPPABLE' };
+    if (h < 18) return { emoji: '🎯', text: 'FINISH STRONG' };
+    if (h < 21) return { emoji: '💎', text: 'CLOSING TIME' };
+    return { emoji: '🌙', text: 'NIGHT GRIND' };
+  };
+
   useEffect(() => {
     checkSession();
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
     if (currentUser && organization) {
       loadTeamData();
+      loadUserNotes();
       if (organization.kpi_goals) setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
     }
   }, [currentUser, organization]);
@@ -360,6 +444,12 @@ export default function MomentumApp() {
   useEffect(() => {
     if (currentUser && organization && currentTab !== 'personal') loadTeamData();
   }, [currentTab]);
+
+  const loadUserNotes = async () => {
+    if (!currentUser) return;
+    const { data } = await db.notes.getByUser(currentUser.id);
+    if (data) setUserNotes(data);
+  };
 
   const checkSession = async () => {
     const saved = localStorage.getItem('momentum_user');
@@ -460,6 +550,7 @@ export default function MomentumApp() {
     setOrganization(null);
     setTeamMembers([]);
     setTeamKPIs({});
+    setUserNotes([]);
     setView('auth');
   };
 
@@ -597,18 +688,10 @@ export default function MomentumApp() {
   const weeklyStats = getStats(currentUser?.id, 'week');
   const monthlyStats = getStats(currentUser?.id, 'month');
   const displayName = currentUser?.display_name || currentUser?.name;
+  const motivation = getMotivation();
 
   const pct = (c, g) => Math.min((c / g) * 100, 100);
   const pColor = (c, g) => pct(c, g) >= 100 ? 'bg-green-500' : pct(c, g) >= 50 ? 'bg-yellow-500' : 'bg-red-500';
-
-  const getMotivation = () => {
-    const h = currentTime.getHours();
-    if ((myKPI.offers || 0) >= goals.daily_offers && totalTexts >= (goals.daily_new_agents + goals.daily_follow_ups)) return "🔥 CRUSHING IT!";
-    if (h < 10) return "☀️ Morning grind!";
-    if (h < 14) return "💪 Keep pushing!";
-    if (h < 18) return "🎯 Finish strong!";
-    return "🌙 Lock it in!";
-  };
 
   if (view === 'loading') return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><div className="text-white text-xl">⚡ Loading...</div></div>;
 
@@ -701,48 +784,75 @@ export default function MomentumApp() {
           </div>
         )}
 
-        <div className="bg-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">⚡</span>
+        {/* Sleek Header */}
+        <div className="bg-gradient-to-r from-slate-800 via-slate-800 to-slate-900 rounded-2xl p-6 mb-4 border border-slate-700 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-6">
+            {/* Left: Logo, Org Name & Date */}
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl flex items-center justify-center text-3xl shadow-lg shadow-orange-500/30">
+                ⚡
+              </div>
               <div>
-                <h1 className="text-xl font-bold text-white">{organization?.name || 'Momentum'}</h1>
-                <p className="text-slate-400 text-xs">{currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+                <h1 className="text-3xl font-extrabold text-white tracking-tight" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+                  {organization?.name || 'Momentum'}
+                </h1>
+                <p className="text-slate-400 text-sm mt-0.5">
+                  {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                </p>
               </div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-white">{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
-              <p className="text-green-400 text-sm">{getMotivation()}</p>
+            
+            {/* Center: Big Time & Motivation */}
+            <div className="text-center flex-1 min-w-[280px]">
+              <div className="text-5xl font-bold text-white tracking-tight font-mono" style={{ textShadow: '0 0 30px rgba(255,255,255,0.1)' }}>
+                {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </div>
+              <div className="flex items-center justify-center gap-3 mt-2">
+                <span className="text-4xl">{motivation.emoji}</span>
+                <span className="text-2xl font-black tracking-wider bg-gradient-to-r from-amber-400 via-orange-400 to-red-400 bg-clip-text text-transparent">
+                  {motivation.text}
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <button onClick={openProfileModal} className="hover:opacity-80 transition"><UserAvatar user={currentUser} size="md" /></button>
+            
+            {/* Right: User */}
+            <div className="flex items-center gap-4">
+              <button onClick={openProfileModal} className="hover:opacity-80 transition"><UserAvatar user={currentUser} size="lg" /></button>
               <div className="text-right">
-                <p className="text-white font-semibold">{displayName}</p>
-                <p className="text-slate-400 text-xs">{currentUser?.role === 'owner' ? '👑 Owner' : '👤 Member'}</p>
+                <p className="text-white font-bold text-lg">{displayName}</p>
+                <p className="text-slate-400 text-sm">{currentUser?.role === 'owner' ? '👑 Owner' : '👤 Member'}</p>
               </div>
-              <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm">Logout</button>
+              <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-all">Logout</button>
             </div>
           </div>
-          <div className="flex gap-2 mt-4 flex-wrap">
-            {['personal', 'team', 'analytics', 'history'].map(tab => <button key={tab} onClick={() => setCurrentTab(tab)} className={`px-4 py-2 rounded-lg font-semibold transition ${currentTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</button>)}
-            {currentUser?.role === 'owner' && <button onClick={() => setCurrentTab('admin')} className={`px-4 py-2 rounded-lg font-semibold transition ${currentTab === 'admin' ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>Admin</button>}
+          
+          {/* Tabs */}
+          <div className="flex gap-2 mt-6 flex-wrap">
+            {['personal', 'team', 'analytics', 'history', 'notes'].map(tab => (
+              <button key={tab} onClick={() => setCurrentTab(tab)} className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${currentTab === tab ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25' : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700 hover:text-white'}`}>
+                {tab === 'notes' ? '📝 Notes' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+            {currentUser?.role === 'owner' && (
+              <button onClick={() => setCurrentTab('admin')} className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${currentTab === 'admin' ? 'bg-gradient-to-r from-red-600 to-pink-600 text-white shadow-lg shadow-red-500/25' : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700 hover:text-white'}`}>Admin</button>
+            )}
           </div>
         </div>
 
         {currentTab === 'personal' && (
           <div className="space-y-4">
-            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 flex items-center gap-4">
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 flex items-center gap-4">
               <button onClick={openProfileModal} className="hover:opacity-80 transition"><UserAvatar user={currentUser} size="lg" /></button>
               <div className="flex-1">
                 <p className="text-white font-bold text-xl">{displayName}</p>
                 <p className="text-slate-400 text-sm">Your daily KPIs</p>
               </div>
-              <button onClick={openProfileModal} className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-lg text-sm">✏️ Edit Profile</button>
+              <button onClick={openProfileModal} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium">✏️ Edit Profile</button>
             </div>
 
             <OffersCard offers={myKPI.offers || 0} goal={goals.daily_offers} isGoogleSync={organization?.google_sheet_sync} onUpdate={(value) => updateKPI('offers', value)} />
 
-            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-white font-bold">Phone Conversations</span>
                 <span className="text-white text-2xl font-bold">{myKPI.phone_calls || 0}/{goals.daily_calls}</span>
@@ -751,13 +861,13 @@ export default function MomentumApp() {
                 <div className={`h-3 rounded-full ${pColor(myKPI.phone_calls || 0, goals.daily_calls)}`} style={{ width: `${pct(myKPI.phone_calls || 0, goals.daily_calls)}%` }}></div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded">-1</button>
-                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 1)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded">+1</button>
-                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 5)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded">+5</button>
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded-lg">-1</button>
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 1)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg">+1</button>
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 5)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg">+5</button>
               </div>
             </div>
 
-            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-white font-bold">Agent Texts</span>
                 <span className="text-white text-2xl font-bold">{totalTexts}/{goals.daily_new_agents + goals.daily_follow_ups}</span>
@@ -767,7 +877,7 @@ export default function MomentumApp() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 {[{ label: 'New Agents', field: 'new_agents', goal: goals.daily_new_agents }, { label: 'Follow-ups', field: 'follow_ups', goal: goals.daily_follow_ups }].map(({ label, field, goal }) => (
-                  <div key={field} className="bg-slate-700 rounded p-3">
+                  <div key={field} className="bg-slate-700 rounded-lg p-3">
                     <p className="text-slate-400 text-xs">{label}: {myKPI[field] || 0}/{goal}</p>
                     <div className="flex gap-2 mt-2">
                       <button onClick={() => updateKPI(field, (myKPI[field] || 0) - 10)} className="flex-1 bg-slate-600 text-white py-1 rounded text-sm">-10</button>
@@ -780,36 +890,33 @@ export default function MomentumApp() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+              <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
                 <p className="text-white font-bold">Deals Under Contract</p>
                 <p className="text-xs text-slate-400 mb-1">Weekly Goal: {goals.weekly_contracts}</p>
                 <p className="text-3xl font-bold text-purple-400">{weeklyStats.contracts}/{goals.weekly_contracts}</p>
                 <div className="flex gap-2 mt-2">
-                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded">-1</button>
-                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) + 1)} className="flex-1 bg-purple-600 text-white py-2 rounded">+1</button>
+                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded-lg">-1</button>
+                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) + 1)} className="flex-1 bg-purple-600 text-white py-2 rounded-lg">+1</button>
                 </div>
               </div>
-              <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+              <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
                 <p className="text-white font-bold">Deals Closed</p>
                 <p className="text-xs text-slate-400 mb-1">Monthly Goal: {goals.monthly_closed}</p>
                 <p className="text-3xl font-bold text-yellow-400">{monthlyStats.closed}/{goals.monthly_closed}</p>
                 <div className="flex gap-2 mt-2">
-                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded">-1</button>
-                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) + 1)} className="flex-1 bg-yellow-600 text-white py-2 rounded">+1</button>
+                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded-lg">-1</button>
+                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) + 1)} className="flex-1 bg-yellow-600 text-white py-2 rounded-lg">+1</button>
                 </div>
               </div>
-            </div>
-
-            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
-              <p className="text-white font-bold mb-2">📝 Daily Notes</p>
-              <textarea value={myKPI.notes || ''} onChange={e => updateKPI('notes', e.target.value)} placeholder="Notes for today..." className="w-full bg-slate-700 text-white rounded-lg p-3 border border-slate-600 focus:border-blue-500 focus:outline-none min-h-24 resize-y" />
             </div>
           </div>
         )}
 
+        {currentTab === 'notes' && <NotesApp userId={currentUser?.id} notes={userNotes} setNotes={setUserNotes} />}
+
         {currentTab === 'team' && (
           <div className="space-y-4">
-            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-white">🏆 Leaderboard</h2>
                 <div className="flex gap-2">
@@ -833,7 +940,7 @@ export default function MomentumApp() {
 
         {currentTab === 'analytics' && (
           <div className="space-y-4">
-            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-white">📊 Analytics</h2>
                 <div className="flex gap-2">
@@ -865,14 +972,14 @@ export default function MomentumApp() {
 
         {currentTab === 'history' && (
           <div className="space-y-4">
-            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
               <h2 className="text-xl font-bold text-white mb-4">📅 History</h2>
               <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600" />
             </div>
             {teamMembers.map(user => {
               const k = teamKPIs[user.id]?.[historyDate] || {};
               return (
-                <div key={user.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                <div key={user.id} className="bg-slate-800 rounded-xl p-4 border border-slate-700">
                   <div className="flex items-center gap-3 mb-2"><UserAvatar user={user} size="sm" /><h3 className="text-white font-bold">{user.display_name || user.name}</h3></div>
                   <div className="grid grid-cols-6 gap-2 text-sm">
                     {[['Offers', k.offers], ['New', k.new_agents], ['Follow', k.follow_ups], ['Calls', k.phone_calls], ['UC', k.deals_under_contract], ['Closed', k.deals_closed]].map(([l, v]) => (
@@ -888,7 +995,7 @@ export default function MomentumApp() {
 
         {currentTab === 'admin' && currentUser?.role === 'owner' && (
           <div className="space-y-4">
-            <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
               <h2 className="text-xl font-bold text-white mb-4">👑 Admin Panel</h2>
               <div className="mb-6 bg-slate-700 rounded-lg p-4">
                 <h3 className="text-white font-semibold mb-4">📊 Team KPI Goals</h3>
