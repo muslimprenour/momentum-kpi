@@ -378,12 +378,39 @@ export default function MomentumApp() {
     }
   };
 
-  const getStats = (userId, days) => {
+  const getStats = (userId, period) => {
     const userKPIs = teamKPIs[userId] || {};
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
+    const now = new Date();
+    
+    let startDate, endDate;
+    
+    if (period === 'week') {
+      // Current week (Sunday to Saturday)
+      const dayOfWeek = now.getDay();
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - dayOfWeek);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+    } else if (period === 'month') {
+      // Current calendar month
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else if (period === 'quarter') {
+      // Current quarter
+      const quarter = Math.floor(now.getMonth() / 3);
+      startDate = new Date(now.getFullYear(), quarter * 3, 1);
+      endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+    } else {
+      // Default: today only
+      startDate = new Date(now);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(now);
+    }
+    
     return Object.entries(userKPIs).reduce((acc, [date, kpi]) => {
-      if (new Date(date) >= cutoff) {
+      const kpiDate = new Date(date);
+      if (kpiDate >= startDate && kpiDate <= endDate) {
         return {
           offers: acc.offers + (kpi.offers || 0),
           texts: acc.texts + (kpi.new_agents || 0) + (kpi.follow_ups || 0),
@@ -397,10 +424,12 @@ export default function MomentumApp() {
   };
 
   const getTeamTotals = (period) => {
-    const days = period === 'daily' ? 1 : period === 'weekly' ? 7 : period === 'monthly' ? 30 : 90;
+    // Map analytics period names to getStats period names
+    const statsPeriod = period === 'weekly' ? 'week' : period === 'monthly' ? 'month' : period === 'quarterly' ? 'quarter' : period;
+    
     return teamMembers.reduce((t, user) => {
-      const kpi = days === 1 ? (teamKPIs[user.id]?.[today] || {}) : getStats(user.id, days);
-      const s = days === 1 ? {
+      const kpi = period === 'daily' ? (teamKPIs[user.id]?.[today] || {}) : getStats(user.id, statsPeriod);
+      const s = period === 'daily' ? {
         offers: kpi.offers || 0,
         texts: (kpi.new_agents || 0) + (kpi.follow_ups || 0),
         calls: kpi.phone_calls || 0,
@@ -418,9 +447,9 @@ export default function MomentumApp() {
   };
 
   const getLeaderboard = () => {
-    const days = leaderboardPeriod === 'week' ? 7 : 30;
+    const period = leaderboardPeriod === 'week' ? 'week' : 'month';
     return teamMembers.map(user => {
-      const s = getStats(user.id, days);
+      const s = getStats(user.id, period);
       return {
         user,
         stats: s,
@@ -457,8 +486,8 @@ export default function MomentumApp() {
 
   const myKPI = getMyKPI();
   const totalTexts = (myKPI.new_agents || 0) + (myKPI.follow_ups || 0);
-  const weeklyStats = getStats(currentUser?.id, 7);
-  const monthlyStats = getStats(currentUser?.id, 30);
+  const weeklyStats = getStats(currentUser?.id, 'week');
+  const monthlyStats = getStats(currentUser?.id, 'month');
 
   const pct = (c, g) => Math.min((c / g) * 100, 100);
   const pColor = (c, g) => pct(c, g) >= 100 ? 'bg-green-500' : pct(c, g) >= 50 ? 'bg-yellow-500' : 'bg-red-500';
