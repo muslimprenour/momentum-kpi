@@ -147,11 +147,11 @@ const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
   const isComplete = offers >= goal;
   
   const getStatus = () => {
-    if (isComplete) return { emoji: '🔥', text: 'Goal Crushed!', color: 'text-green-400' };
-    if (percentage >= 75) return { emoji: '⚡', text: 'Almost there!', color: 'text-yellow-400' };
-    if (percentage >= 50) return { emoji: '💪', text: 'Halfway!', color: 'text-blue-400' };
-    if (offers > 0) return { emoji: '🎯', text: 'Keep going!', color: 'text-indigo-400' };
-    return { emoji: '📋', text: 'Start strong!', color: 'text-slate-400' };
+    if (isComplete) return { emoji: '🔥', text: 'GOAL CRUSHED!', color: 'from-green-400 to-emerald-400' };
+    if (percentage >= 75) return { emoji: '⚡', text: 'ALMOST THERE!', color: 'from-yellow-400 to-amber-400' };
+    if (percentage >= 50) return { emoji: '💪', text: 'HALFWAY!', color: 'from-blue-400 to-cyan-400' };
+    if (offers > 0) return { emoji: '🎯', text: 'KEEP GOING!', color: 'from-indigo-400 to-purple-400' };
+    return { emoji: '📋', text: 'START STRONG!', color: 'from-slate-400 to-slate-400' };
   };
   
   const status = getStatus();
@@ -164,14 +164,16 @@ const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-semibold text-white">Offers Submitted</h3>
+            <h3 className="text-xl font-bold text-white">Offers Submitted</h3>
             {isGoogleSync && (
-              <p className="text-sm text-green-400 mt-0.5">📊 Synced from Google Sheet</p>
+              <p className="text-sm text-green-400 mt-0.5">📊 Synced from Google Sheets</p>
             )}
           </div>
-          <div className={`flex items-center gap-1.5 text-sm font-medium ${status.color}`}>
-            <span>{status.emoji}</span>
-            <span>{status.text}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-3xl">{status.emoji}</span>
+            <span className={`text-lg font-extrabold tracking-wide bg-gradient-to-r ${status.color} bg-clip-text text-transparent`}>
+              {status.text}
+            </span>
           </div>
         </div>
         
@@ -221,7 +223,7 @@ const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
   );
 };
 
-// iOS-style Notes Component
+// iOS-style Notes Component (Full Page)
 const NotesApp = ({ userId, notes, setNotes }) => {
   const [selectedNote, setSelectedNote] = useState(null);
   const [editTitle, setEditTitle] = useState('');
@@ -377,6 +379,84 @@ const NotesApp = ({ userId, notes, setNotes }) => {
   );
 };
 
+// Quick Notes Widget for Personal Tab
+const QuickNotesWidget = ({ notes, setNotes, userId, onOpenFullNotes }) => {
+  const [quickNote, setQuickNote] = useState('');
+  const latestNote = notes[0];
+
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  };
+
+  const saveQuickNote = async () => {
+    if (!quickNote.trim()) return;
+    
+    const newNote = {
+      user_id: userId,
+      title: quickNote.substring(0, 30) + (quickNote.length > 30 ? '...' : ''),
+      content: quickNote,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    const { data } = await db.notes.create(newNote);
+    if (data?.[0]) {
+      setNotes(prev => [data[0], ...prev]);
+      setQuickNote('');
+    }
+  };
+
+  return (
+    <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-white font-bold flex items-center gap-2">
+          <span>📝</span> Quick Notes
+        </h3>
+        <button onClick={onOpenFullNotes} className="text-amber-400 hover:text-amber-300 text-sm font-medium">
+          View All →
+        </button>
+      </div>
+      
+      {/* Quick add */}
+      <div className="flex gap-2 mb-3">
+        <input
+          type="text"
+          value={quickNote}
+          onChange={(e) => setQuickNote(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && saveQuickNote()}
+          placeholder="Jot something down..."
+          className="flex-1 bg-slate-700 text-white rounded-lg px-3 py-2 text-sm border border-slate-600 focus:border-amber-500 focus:outline-none"
+        />
+        <button
+          onClick={saveQuickNote}
+          className="bg-amber-500 hover:bg-amber-400 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          Add
+        </button>
+      </div>
+      
+      {/* Recent notes preview */}
+      <div className="space-y-2 max-h-40 overflow-y-auto">
+        {notes.length === 0 ? (
+          <p className="text-slate-500 text-sm text-center py-2">No notes yet</p>
+        ) : (
+          notes.slice(0, 3).map(note => (
+            <div key={note.id} className="bg-slate-700/50 rounded-lg p-2 cursor-pointer hover:bg-slate-700 transition-colors" onClick={onOpenFullNotes}>
+              <div className="flex justify-between items-start">
+                <p className="text-white text-sm font-medium truncate flex-1">{note.title || 'Untitled'}</p>
+                <span className="text-slate-500 text-xs ml-2">{formatDate(note.updated_at)}</span>
+              </div>
+              {note.content && (
+                <p className="text-slate-400 text-xs mt-1 truncate">{note.content.substring(0, 60)}</p>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function MomentumApp() {
   const [view, setView] = useState('loading');
   const [authMode, setAuthMode] = useState('login');
@@ -419,12 +499,12 @@ export default function MomentumApp() {
     if ((myKPI.offers || 0) >= goals.daily_offers) {
       return { emoji: '🔥', text: 'ON FIRE TODAY' };
     }
-    if (h < 9) return { emoji: '🌅', text: 'RISE & GRIND' };
-    if (h < 12) return { emoji: '⚡', text: 'PEAK HOURS' };
-    if (h < 15) return { emoji: '🚀', text: 'UNSTOPPABLE' };
-    if (h < 18) return { emoji: '🎯', text: 'FINISH STRONG' };
-    if (h < 21) return { emoji: '💎', text: 'CLOSING TIME' };
-    return { emoji: '🌙', text: 'NIGHT GRIND' };
+    if (h < 9) return { emoji: '🌅', text: 'Rise & Grind' };
+    if (h < 12) return { emoji: '⚡', text: 'Peak Hours' };
+    if (h < 15) return { emoji: '🚀', text: 'Unstoppable' };
+    if (h < 18) return { emoji: '🎯', text: 'Finish Strong' };
+    if (h < 21) return { emoji: '💎', text: 'Closing Time' };
+    return { emoji: '🌙', text: 'Night Grind' };
   };
 
   useEffect(() => {
@@ -784,57 +864,41 @@ export default function MomentumApp() {
           </div>
         )}
 
-        {/* Sleek Header */}
-        <div className="bg-gradient-to-r from-slate-800 via-slate-800 to-slate-900 rounded-2xl p-6 mb-4 border border-slate-700 shadow-xl">
-          <div className="flex flex-wrap items-center justify-between gap-6">
-            {/* Left: Logo, Org Name & Date */}
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 rounded-2xl flex items-center justify-center text-3xl shadow-lg shadow-orange-500/30">
-                ⚡
-              </div>
+        {/* Header */}
+        <div className="bg-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">⚡</span>
               <div>
-                <h1 className="text-3xl font-extrabold text-white tracking-tight" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-                  {organization?.name || 'Momentum'}
-                </h1>
-                <p className="text-slate-400 text-sm mt-0.5">
-                  {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                </p>
+                <h1 className="text-xl font-bold text-white">{organization?.name || 'Momentum'}</h1>
+                <p className="text-slate-400 text-xs">{currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
               </div>
             </div>
-            
-            {/* Center: Big Time & Motivation */}
-            <div className="text-center flex-1 min-w-[280px]">
-              <div className="text-5xl font-bold text-white tracking-tight font-mono" style={{ textShadow: '0 0 30px rgba(255,255,255,0.1)' }}>
-                {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-              </div>
-              <div className="flex items-center justify-center gap-3 mt-2">
-                <span className="text-4xl">{motivation.emoji}</span>
-                <span className="text-2xl font-black tracking-wider bg-gradient-to-r from-amber-400 via-orange-400 to-red-400 bg-clip-text text-transparent">
-                  {motivation.text}
-                </span>
+            <div className="text-center">
+              <div className="text-4xl font-bold text-white tracking-tight">{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+              <div className="flex items-center justify-center gap-1 mt-1">
+                <span className="text-base">{motivation.emoji}</span>
+                <span className="text-green-400 text-xs font-semibold">{motivation.text}</span>
               </div>
             </div>
-            
-            {/* Right: User */}
-            <div className="flex items-center gap-4">
-              <button onClick={openProfileModal} className="hover:opacity-80 transition"><UserAvatar user={currentUser} size="lg" /></button>
+            <div className="flex items-center gap-3">
+              <button onClick={openProfileModal} className="hover:opacity-80 transition"><UserAvatar user={currentUser} size="md" /></button>
               <div className="text-right">
-                <p className="text-white font-bold text-lg">{displayName}</p>
-                <p className="text-slate-400 text-sm">{currentUser?.role === 'owner' ? '👑 Owner' : '👤 Member'}</p>
+                <p className="text-white font-semibold">{displayName}</p>
+                <p className="text-slate-400 text-xs">{currentUser?.role === 'owner' ? '👑 Owner' : '👤 Member'}</p>
               </div>
-              <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-all">Logout</button>
+              <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm">Logout</button>
             </div>
           </div>
           
-          {/* Tabs */}
-          <div className="flex gap-2 mt-6 flex-wrap">
+          <div className="flex gap-2 mt-4 flex-wrap">
             {['personal', 'team', 'analytics', 'history', 'notes'].map(tab => (
-              <button key={tab} onClick={() => setCurrentTab(tab)} className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${currentTab === tab ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25' : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700 hover:text-white'}`}>
+              <button key={tab} onClick={() => setCurrentTab(tab)} className={`px-4 py-2 rounded-lg font-semibold transition ${currentTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
                 {tab === 'notes' ? '📝 Notes' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
             {currentUser?.role === 'owner' && (
-              <button onClick={() => setCurrentTab('admin')} className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${currentTab === 'admin' ? 'bg-gradient-to-r from-red-600 to-pink-600 text-white shadow-lg shadow-red-500/25' : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700 hover:text-white'}`}>Admin</button>
+              <button onClick={() => setCurrentTab('admin')} className={`px-4 py-2 rounded-lg font-semibold transition ${currentTab === 'admin' ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>Admin</button>
             )}
           </div>
         </div>
@@ -909,6 +973,14 @@ export default function MomentumApp() {
                 </div>
               </div>
             </div>
+
+            {/* Quick Notes Widget */}
+            <QuickNotesWidget 
+              notes={userNotes} 
+              setNotes={setUserNotes} 
+              userId={currentUser?.id}
+              onOpenFullNotes={() => setCurrentTab('notes')}
+            />
           </div>
         )}
 
