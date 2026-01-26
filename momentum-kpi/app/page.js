@@ -1,6 +1,59 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
+
+// Confetti celebration component
+const Confetti = ({ active }) => {
+  const [particles, setParticles] = useState([]);
+  
+  useEffect(() => {
+    if (active) {
+      const colors = ['#fbbf24', '#22c55e', '#3b82f6', '#ec4899', '#8b5cf6', '#f97316'];
+      const newParticles = Array.from({ length: 50 }, (_, i) => ({
+        id: i,
+        x: Math.random() * 100,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        delay: Math.random() * 0.5,
+        duration: 1 + Math.random() * 2,
+        size: 4 + Math.random() * 8,
+        rotation: Math.random() * 360,
+      }));
+      setParticles(newParticles);
+      
+      const timer = setTimeout(() => setParticles([]), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [active]);
+  
+  if (particles.length === 0) return null;
+  
+  return (
+    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+      {particles.map(p => (
+        <div
+          key={p.id}
+          className="absolute animate-confetti"
+          style={{
+            left: `${p.x}%`,
+            top: '-20px',
+            width: p.size,
+            height: p.size,
+            backgroundColor: p.color,
+            borderRadius: Math.random() > 0.5 ? '50%' : '2px',
+            transform: `rotate(${p.rotation}deg)`,
+            animation: `confetti-fall ${p.duration}s ease-out ${p.delay}s forwards`,
+          }}
+        />
+      ))}
+      <style jsx>{`
+        @keyframes confetti-fall {
+          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+      `}</style>
+    </div>
+  );
+};
 
 const SUPABASE_URL = 'https://bnzbaywpfzfochqurqte.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuemJheXdwZnpmb2NocXVycXRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMTU0MTYsImV4cCI6MjA4NDg5MTQxNn0._d0wNc0kzacLHAUYT1Iafx4LeKjrQA8NGhXScz4xu60';
@@ -733,6 +786,8 @@ export default function MomentumApp() {
   const [customInviteCode, setCustomInviteCode] = useState('');
   const [approvedNames, setApprovedNames] = useState([]);
   const [newApprovedName, setNewApprovedName] = useState('');
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [lastOfferCount, setLastOfferCount] = useState(0);
 
   const today = getTodayInOrgTimezone();
 
@@ -1135,6 +1190,17 @@ export default function MomentumApp() {
     const current = getMyKPI();
     const newValue = typeof value === 'string' ? value : Math.max(0, value);
     const updated = { ...current, [field]: newValue, user_id: currentUser.id, date: today };
+    
+    // Check if this update causes them to hit their offer goal for the first time today
+    if (field === 'offers') {
+      const wasUnderGoal = (current.offers || 0) < goals.daily_offers;
+      const nowAtGoal = newValue >= goals.daily_offers;
+      if (wasUnderGoal && nowAtGoal) {
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 3500);
+      }
+    }
+    
     setTeamKPIs(prev => ({ ...prev, [currentUser.id]: { ...prev[currentUser.id], [today]: updated } }));
     const { error } = await db.kpis.upsert({ user_id: currentUser.id, date: today, offers: updated.offers || 0, new_agents: updated.new_agents || 0, follow_ups: updated.follow_ups || 0, phone_calls: updated.phone_calls || 0, deals_under_contract: updated.deals_under_contract || 0, deals_closed: updated.deals_closed || 0, notes: updated.notes || '' });
     if (error) console.error('KPI save failed:', error);
@@ -1246,7 +1312,27 @@ export default function MomentumApp() {
   const pct = (c, g) => Math.min((c / g) * 100, 100);
   const pColor = (c, g) => pct(c, g) >= 100 ? 'bg-green-500' : pct(c, g) >= 50 ? 'bg-yellow-500' : 'bg-red-500';
 
-  if (view === 'loading') return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><div className="text-white text-xl">⚡ Loading...</div></div>;
+  if (view === 'loading') return (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="text-center">
+        <div className="text-6xl mb-4 animate-pulse">⚡</div>
+        <div className="text-white text-xl font-bold">Loading Momentum...</div>
+        <div className="mt-4 w-48 h-1 bg-slate-700 rounded-full overflow-hidden mx-auto">
+          <div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full animate-loading-bar"></div>
+        </div>
+      </div>
+      <style jsx>{`
+        @keyframes loading-bar {
+          0% { width: 0%; }
+          50% { width: 70%; }
+          100% { width: 100%; }
+        }
+        .animate-loading-bar {
+          animation: loading-bar 1.5s ease-in-out infinite;
+        }
+      `}</style>
+    </div>
+  );
 
   if (view === 'auth') {
     return (
@@ -1318,6 +1404,7 @@ export default function MomentumApp() {
 
   return (
     <div className="min-h-screen bg-slate-900 p-3 md:p-4 pb-24 md:pb-4">
+      <Confetti active={showConfetti} />
       <div className="max-w-6xl mx-auto">
         {showProfileModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
