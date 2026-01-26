@@ -1786,6 +1786,23 @@ export default function MomentumApp() {
 
         {currentTab === 'history' && (
           <div className="space-y-4">
+            {/* Mobile: Tab switcher for History/Admin */}
+            {currentUser?.role === 'owner' && (
+              <div className="md:hidden flex gap-2 bg-slate-800 p-1 rounded-lg border border-slate-700">
+                <button 
+                  onClick={() => setCurrentTab('history')} 
+                  className="flex-1 py-2 px-3 rounded-md text-sm font-semibold bg-blue-600 text-white"
+                >
+                  📅 History
+                </button>
+                <button 
+                  onClick={() => setCurrentTab('admin')} 
+                  className="flex-1 py-2 px-3 rounded-md text-sm font-semibold bg-slate-700 text-slate-300"
+                >
+                  👑 Admin
+                </button>
+              </div>
+            )}
             <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
               <h2 className="text-xl font-bold text-white mb-4">📅 History</h2>
               <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600" />
@@ -1809,6 +1826,21 @@ export default function MomentumApp() {
 
         {currentTab === 'admin' && currentUser?.role === 'owner' && (
           <div className="space-y-4">
+            {/* Mobile: Tab switcher for History/Admin */}
+            <div className="md:hidden flex gap-2 bg-slate-800 p-1 rounded-lg border border-slate-700">
+              <button 
+                onClick={() => setCurrentTab('history')} 
+                className="flex-1 py-2 px-3 rounded-md text-sm font-semibold bg-slate-700 text-slate-300"
+              >
+                📅 History
+              </button>
+              <button 
+                onClick={() => setCurrentTab('admin')} 
+                className="flex-1 py-2 px-3 rounded-md text-sm font-semibold bg-red-600 text-white"
+              >
+                👑 Admin
+              </button>
+            </div>
             <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
               <h2 className="text-xl font-bold text-white mb-4">👑 Admin Panel</h2>
               <div className="mb-6 bg-slate-700 rounded-lg p-4">
