@@ -8,6 +8,26 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Supabase Auth Client
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Organization Timezone - ALL dates use this timezone for consistency
+// Change this to your timezone: 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', etc.
+const ORG_TIMEZONE = 'America/New_York';
+
+// Get today's date in org timezone (returns YYYY-MM-DD)
+const getTodayInOrgTimezone = () => {
+  return new Date().toLocaleDateString('en-CA', { timeZone: ORG_TIMEZONE });
+};
+
+// Get current time in org timezone
+const getCurrentTimeInOrgTimezone = () => {
+  return new Date().toLocaleString('en-US', { timeZone: ORG_TIMEZONE });
+};
+
+// Get hour in org timezone (for motivational messages)
+const getCurrentHourInOrgTimezone = () => {
+  const timeStr = new Date().toLocaleTimeString('en-US', { timeZone: ORG_TIMEZONE, hour12: false, hour: '2-digit' });
+  return parseInt(timeStr, 10);
+};
+
 const DEFAULT_KPI_GOALS = {
   daily_offers: 20,
   daily_calls: 20,
@@ -327,10 +347,10 @@ const NotesApp = ({ userId, notes, setNotes }) => {
     const now = new Date();
     const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
     
-    if (diffDays === 0) return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    if (diffDays === 0) return date.toLocaleTimeString('en-US', { timeZone: ORG_TIMEZONE, hour: 'numeric', minute: '2-digit' });
     if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return date.toLocaleDateString('en-US', { weekday: 'long' });
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    if (diffDays < 7) return date.toLocaleDateString('en-US', { timeZone: ORG_TIMEZONE, weekday: 'long' });
+    return date.toLocaleDateString('en-US', { timeZone: ORG_TIMEZONE, month: 'short', day: 'numeric' });
   };
 
   const getPreview = (content) => {
@@ -425,7 +445,7 @@ const QuickNotesWidget = ({ notes, setNotes, userId, onOpenFullNotes }) => {
 
   const formatDate = (dateStr) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return date.toLocaleDateString('en-US', { timeZone: ORG_TIMEZONE, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   };
 
   const saveQuickNote = async () => {
@@ -513,7 +533,7 @@ export default function MomentumApp() {
   const [currentTab, setCurrentTab] = useState('personal');
   const [leaderboardPeriod, setLeaderboardPeriod] = useState('week');
   const [analyticsPeriod, setAnalyticsPeriod] = useState('daily');
-  const [historyDate, setHistoryDate] = useState(formatDateString(new Date()));
+  const [historyDate, setHistoryDate] = useState(getTodayInOrgTimezone());
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileForm, setProfileForm] = useState({ display_name: '', avatar_emoji: '', avatar_url: '' });
   const [profileSaving, setProfileSaving] = useState(false);
@@ -525,12 +545,12 @@ export default function MomentumApp() {
   const [approvedNames, setApprovedNames] = useState([]);
   const [newApprovedName, setNewApprovedName] = useState('');
 
-  const today = formatDateString(new Date());
+  const today = getTodayInOrgTimezone();
 
   const getGoals = () => organization?.kpi_goals ? { ...DEFAULT_KPI_GOALS, ...organization.kpi_goals } : DEFAULT_KPI_GOALS;
 
   const getMotivation = () => {
-    const h = currentTime.getHours();
+    const h = getCurrentHourInOrgTimezone();
     const goals = getGoals();
     const myKPI = getMyKPI();
     const totalTexts = (myKPI.new_agents || 0) + (myKPI.follow_ups || 0);
@@ -859,10 +879,10 @@ export default function MomentumApp() {
   const resyncUser = async (user) => {
     const count = await importPendingOffers(user.id, user.name, user.organization_id);
     if (count > 0) {
-      alert(`✅ Synced ${count} offer record(s) for ${user.display_name || user.name}!`);
+      alert(`✅ Synced ${count} offer record(s) for ${user.name}!`);
       loadTeamData();
     } else {
-      alert(`No pending offers found for ${user.display_name || user.name}. Check that the name in Google Sheets matches.`);
+      alert(`No pending offers found for "${user.name}" in Google Sheets.`);
     }
   };
 
@@ -933,7 +953,12 @@ export default function MomentumApp() {
 
   const getStats = (userId, period) => {
     const userKPIs = teamKPIs[userId] || {};
-    const now = new Date();
+    
+    // Use org timezone for all date calculations
+    const todayStr = getTodayInOrgTimezone();
+    const [year, month, day] = todayStr.split('-').map(Number);
+    const now = new Date(year, month - 1, day); // Create date from org timezone's "today"
+    
     let startDateStr, endDateStr;
     if (period === 'week') {
       // Week starts on MONDAY and ends on SUNDAY
@@ -943,14 +968,14 @@ export default function MomentumApp() {
       const endDate = new Date(startDate); endDate.setDate(startDate.getDate() + 6);
       startDateStr = formatDateString(startDate); endDateStr = formatDateString(endDate);
     } else if (period === 'month') {
-      startDateStr = formatDateString(new Date(now.getFullYear(), now.getMonth(), 1));
-      endDateStr = formatDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+      startDateStr = formatDateString(new Date(year, month - 1, 1));
+      endDateStr = formatDateString(new Date(year, month, 0));
     } else if (period === 'quarter') {
-      const quarter = Math.floor(now.getMonth() / 3);
-      startDateStr = formatDateString(new Date(now.getFullYear(), quarter * 3, 1));
-      endDateStr = formatDateString(new Date(now.getFullYear(), quarter * 3 + 3, 0));
+      const quarter = Math.floor((month - 1) / 3);
+      startDateStr = formatDateString(new Date(year, quarter * 3, 1));
+      endDateStr = formatDateString(new Date(year, quarter * 3 + 3, 0));
     } else {
-      startDateStr = endDateStr = formatDateString(now);
+      startDateStr = endDateStr = todayStr;
     }
     return Object.entries(userKPIs).reduce((acc, [date, kpi]) => {
       if (date >= startDateStr && date <= endDateStr) {
@@ -991,7 +1016,7 @@ export default function MomentumApp() {
 
   const copySummary = () => {
     const t = getTeamTotals('daily');
-    let s = `⚡ MOMENTUM - ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}\n\nTEAM: ${t.offers} offers | ${t.texts} texts | ${t.calls} calls\n\n`;
+    let s = `⚡ MOMENTUM - ${new Date().toLocaleDateString('en-US', { timeZone: ORG_TIMEZONE, weekday: 'long', month: 'long', day: 'numeric' })}\n\nTEAM: ${t.offers} offers | ${t.texts} texts | ${t.calls} calls\n\n`;
     teamMembers.forEach(u => { const k = teamKPIs[u.id]?.[today] || {}; s += `${u.display_name || u.name}: ${k.offers || 0} offers, ${(k.new_agents || 0) + (k.follow_ups || 0)} texts, ${k.phone_calls || 0} calls\n`; });
     navigator.clipboard.writeText(s); alert('Copied!');
   };
@@ -1115,11 +1140,11 @@ export default function MomentumApp() {
               <span className="text-4xl">⚡</span>
               <div>
                 <h1 className="text-2xl font-extrabold text-white tracking-tight">{organization?.name || 'Momentum'}</h1>
-                <p className="text-slate-400 text-sm">{currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                <p className="text-slate-400 text-sm">{currentTime.toLocaleDateString('en-US', { timeZone: ORG_TIMEZONE, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
               </div>
             </div>
             <div className="text-center">
-              <div className="text-5xl font-black text-white tracking-tight">{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+              <div className="text-5xl font-black text-white tracking-tight">{currentTime.toLocaleTimeString('en-US', { timeZone: ORG_TIMEZONE, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
               <div className="flex items-center justify-center gap-2 mt-2">
                 <span className="text-4xl">{motivation.emoji}</span>
                 <span className="text-2xl font-extrabold bg-gradient-to-r from-green-400 via-emerald-400 to-teal-400 bg-clip-text text-transparent">{motivation.text}</span>
