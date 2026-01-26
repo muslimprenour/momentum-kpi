@@ -1,8 +1,12 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = 'https://bnzbaywpfzfochqurqte.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuemJheXdwZnpmb2NocXVycXRlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMTU0MTYsImV4cCI6MjA4NDg5MTQxNn0._d0wNc0kzacLHAUYT1Iafx4LeKjrQA8NGhXScz4xu60';
+
+// Supabase Auth Client
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const DEFAULT_KPI_GOALS = {
   daily_offers: 20,
@@ -151,7 +155,7 @@ const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
     if (percentage >= 75) return { emoji: '⚡', text: 'ALMOST THERE!', color: 'from-yellow-400 to-amber-400' };
     if (percentage >= 50) return { emoji: '💪', text: 'HALFWAY!', color: 'from-blue-400 to-cyan-400' };
     if (offers > 0) return { emoji: '🎯', text: 'KEEP GOING!', color: 'from-indigo-400 to-purple-400' };
-    return { emoji: '📋', text: 'START STRONG!', color: 'from-slate-400 to-slate-400' };
+    return { emoji: '🤲', text: "BISMILLAH, LET'S GO!", color: 'from-slate-400 to-slate-400' };
   };
   
   const status = getStatus();
@@ -469,8 +473,8 @@ export default function MomentumApp() {
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [signupForm, setSignupForm] = useState({ name: '', email: '', password: '', confirm: '', inviteCode: '', orgName: '' });
   const [forgotEmail, setForgotEmail] = useState('');
-  const [recoveredPassword, setRecoveredPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [currentTab, setCurrentTab] = useState('personal');
   const [leaderboardPeriod, setLeaderboardPeriod] = useState('week');
   const [analyticsPeriod, setAnalyticsPeriod] = useState('daily');
@@ -570,53 +574,150 @@ export default function MomentumApp() {
   };
 
   const handleOwnerSignup = async () => {
-    setError('');
+    setError(''); setSuccessMessage('');
     if (!signupForm.name || !signupForm.email || !signupForm.password || !signupForm.orgName) { setError('Please fill in all fields'); return; }
     if (signupForm.password !== signupForm.confirm) { setError('Passwords do not match'); return; }
     if (signupForm.password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    
+    // Check if email already exists in users table
     const { data: existing } = await db.users.getByEmail(signupForm.email);
-    if (existing?.length > 0) { setError('Email already registered'); return; }
-    const { data: orgData, error: orgError } = await db.orgs.create({ name: signupForm.orgName, kpi_goals: DEFAULT_KPI_GOALS });
-    if (orgError || !orgData?.[0]) { setError('Failed to create organization'); return; }
-    const org = orgData[0];
-    const { data: userData, error: userError } = await db.users.create({ name: signupForm.name, email: signupForm.email.toLowerCase().trim(), password_hash: signupForm.password, role: 'owner', organization_id: org.id, display_name: null, avatar_emoji: null, avatar_url: null });
-    if (userError || !userData?.[0]) { setError('Failed to create account'); return; }
-    const user = userData[0];
-    await importPendingOffers(user.id, user.name, org.id);
-    localStorage.setItem('momentum_user', JSON.stringify(user));
-    setCurrentUser(user);
-    setOrganization(org);
-    setKpiGoals(DEFAULT_KPI_GOALS);
-    setView('dashboard');
+    if (existing?.length > 0) { setError('Email already registered. Please login instead.'); return; }
+    
+    // Sign up with Supabase Auth (sends verification email)
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: signupForm.email.toLowerCase().trim(),
+      password: signupForm.password,
+      options: {
+        data: {
+          name: signupForm.name,
+          org_name: signupForm.orgName,
+          role: 'owner'
+        }
+      }
+    });
+    
+    if (authError) { setError(authError.message); return; }
+    
+    // Show verification message
+    setSuccessMessage('✅ Check your email! Click the verification link to complete signup.');
+    setAuthMode('verify');
   };
 
   const handleMemberSignup = async () => {
-    setError('');
+    setError(''); setSuccessMessage('');
     if (!signupForm.name || !signupForm.email || !signupForm.password || !signupForm.inviteCode) { setError('Please fill in all fields including invite code'); return; }
     if (signupForm.password !== signupForm.confirm) { setError('Passwords do not match'); return; }
+    if (signupForm.password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    
+    // Validate invite code first
     const { data: inviteData } = await db.invites.getByCode(signupForm.inviteCode.toUpperCase());
     if (!inviteData?.[0]) { setError('Invalid or expired invite code'); return; }
-    const invite = inviteData[0];
+    
+    // Check if email already exists
     const { data: existing } = await db.users.getByEmail(signupForm.email);
-    if (existing?.length > 0) { setError('Email already registered'); return; }
-    const { data: userData, error: userError } = await db.users.create({ name: signupForm.name, email: signupForm.email.toLowerCase().trim(), password_hash: signupForm.password, role: 'member', organization_id: invite.organization_id, display_name: null, avatar_emoji: null, avatar_url: null });
-    if (userError || !userData?.[0]) { setError('Failed to create account'); return; }
-    const user = userData[0];
-    await db.invites.use(invite.code, user.id);
-    await importPendingOffers(user.id, user.name, invite.organization_id);
-    const { data: orgs } = await db.orgs.getById(invite.organization_id);
-    localStorage.setItem('momentum_user', JSON.stringify(user));
-    setCurrentUser(user);
-    setOrganization(orgs?.[0] || null);
-    setView('dashboard');
+    if (existing?.length > 0) { setError('Email already registered. Please login instead.'); return; }
+    
+    // Sign up with Supabase Auth (sends verification email)
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: signupForm.email.toLowerCase().trim(),
+      password: signupForm.password,
+      options: {
+        data: {
+          name: signupForm.name,
+          invite_code: signupForm.inviteCode.toUpperCase(),
+          role: 'member'
+        }
+      }
+    });
+    
+    if (authError) { setError(authError.message); return; }
+    
+    // Show verification message
+    setSuccessMessage('✅ Check your email! Click the verification link to complete signup.');
+    setAuthMode('verify');
   };
 
   const handleLogin = async () => {
-    setError('');
-    const { data: users } = await db.users.getByEmail(loginForm.email);
-    const user = users?.find(u => u.password_hash === loginForm.password);
-    if (!user) { setError('Invalid email or password'); return; }
+    setError(''); setSuccessMessage('');
+    if (!loginForm.email || !loginForm.password) { setError('Please enter email and password'); return; }
+    
+    // Sign in with Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: loginForm.email.toLowerCase().trim(),
+      password: loginForm.password
+    });
+    
+    if (authError) { 
+      if (authError.message.includes('Email not confirmed')) {
+        setError('Please verify your email first. Check your inbox for the verification link.');
+      } else {
+        setError('Invalid email or password');
+      }
+      return; 
+    }
+    
+    const authUser = authData.user;
+    const metadata = authUser.user_metadata;
+    
+    // Check if user exists in our users table
+    let { data: users } = await db.users.getByEmail(authUser.email);
+    let user = users?.[0];
+    
+    // If user doesn't exist in users table, create them (first login after verification)
+    if (!user) {
+      if (metadata.role === 'owner') {
+        // Create organization first
+        const { data: orgData, error: orgError } = await db.orgs.create({ 
+          name: metadata.org_name, 
+          kpi_goals: DEFAULT_KPI_GOALS 
+        });
+        if (orgError || !orgData?.[0]) { setError('Failed to create organization'); return; }
+        const org = orgData[0];
+        
+        // Create user
+        const { data: userData, error: userError } = await db.users.create({ 
+          name: metadata.name, 
+          email: authUser.email.toLowerCase().trim(), 
+          password_hash: 'supabase_auth', 
+          role: 'owner', 
+          organization_id: org.id, 
+          display_name: null, 
+          avatar_emoji: null, 
+          avatar_url: null 
+        });
+        if (userError || !userData?.[0]) { setError('Failed to create account'); return; }
+        user = userData[0];
+        await importPendingOffers(user.id, user.name, org.id);
+      } else if (metadata.role === 'member' && metadata.invite_code) {
+        // Get invite code info
+        const { data: inviteData } = await db.invites.getByCode(metadata.invite_code);
+        if (!inviteData?.[0]) { setError('Your invite code is no longer valid'); return; }
+        const invite = inviteData[0];
+        
+        // Create user
+        const { data: userData, error: userError } = await db.users.create({ 
+          name: metadata.name, 
+          email: authUser.email.toLowerCase().trim(), 
+          password_hash: 'supabase_auth', 
+          role: 'member', 
+          organization_id: invite.organization_id, 
+          display_name: null, 
+          avatar_emoji: null, 
+          avatar_url: null 
+        });
+        if (userError || !userData?.[0]) { setError('Failed to create account'); return; }
+        user = userData[0];
+        await db.invites.use(invite.code, user.id);
+        await importPendingOffers(user.id, user.name, invite.organization_id);
+      } else {
+        setError('Account setup incomplete. Please sign up again.');
+        return;
+      }
+    }
+    
+    // Get organization
     const { data: orgs } = await db.orgs.getById(user.organization_id);
+    
     localStorage.setItem('momentum_user', JSON.stringify(user));
     setCurrentUser(user);
     setProfileForm({ display_name: user.display_name || '', avatar_emoji: user.avatar_emoji || '', avatar_url: user.avatar_url || '' });
@@ -624,7 +725,8 @@ export default function MomentumApp() {
     setView('dashboard');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     localStorage.removeItem('momentum_user');
     setCurrentUser(null);
     setOrganization(null);
@@ -635,11 +737,16 @@ export default function MomentumApp() {
   };
 
   const handleForgotPassword = async () => {
-    setError(''); setRecoveredPassword('');
+    setError(''); setSuccessMessage('');
     if (!forgotEmail) { setError('Please enter your email'); return; }
-    const { data: users } = await db.users.getByEmail(forgotEmail.toLowerCase().trim());
-    if (!users || users.length === 0) { setError('No account found with that email'); return; }
-    setRecoveredPassword(users[0].password_hash);
+    
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.toLowerCase().trim(), {
+      redirectTo: `${window.location.origin}`
+    });
+    
+    if (error) { setError(error.message); return; }
+    
+    setSuccessMessage('✅ Password reset email sent! Check your inbox.');
   };
 
   const generateInvite = async () => {
@@ -784,18 +891,21 @@ export default function MomentumApp() {
             <h1 className="text-4xl font-bold text-white mb-2">Momentum</h1>
             <p className="text-slate-400 text-sm">Track. Compete. Dominate.</p>
           </div>
-          <div className="flex gap-1 mb-6 bg-slate-700 p-1 rounded-lg">
-            <button onClick={() => { setAuthMode('login'); setError(''); }} className={`flex-1 py-2 rounded-md text-sm font-semibold transition ${authMode === 'login' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>Login</button>
-            <button onClick={() => { setAuthMode('owner'); setError(''); }} className={`flex-1 py-2 rounded-md text-sm font-semibold transition ${authMode === 'owner' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>New Team</button>
-            <button onClick={() => { setAuthMode('member'); setError(''); }} className={`flex-1 py-2 rounded-md text-sm font-semibold transition ${authMode === 'member' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>Join Team</button>
-          </div>
+          {authMode !== 'verify' && authMode !== 'forgot' && (
+            <div className="flex gap-1 mb-6 bg-slate-700 p-1 rounded-lg">
+              <button onClick={() => { setAuthMode('login'); setError(''); setSuccessMessage(''); }} className={`flex-1 py-2 rounded-md text-sm font-semibold transition ${authMode === 'login' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>Login</button>
+              <button onClick={() => { setAuthMode('owner'); setError(''); setSuccessMessage(''); }} className={`flex-1 py-2 rounded-md text-sm font-semibold transition ${authMode === 'owner' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>New Team</button>
+              <button onClick={() => { setAuthMode('member'); setError(''); setSuccessMessage(''); }} className={`flex-1 py-2 rounded-md text-sm font-semibold transition ${authMode === 'member' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>Join Team</button>
+            </div>
+          )}
           {error && <div className="bg-red-500/20 border border-red-500 text-red-400 px-4 py-2 rounded-lg mb-4 text-sm">{error}</div>}
+          {successMessage && <div className="bg-green-500/20 border border-green-500 text-green-400 px-4 py-2 rounded-lg mb-4 text-sm">{successMessage}</div>}
           {authMode === 'login' && (
             <div className="space-y-4">
               <input type="email" placeholder="Email" value={loginForm.email} onChange={e => setLoginForm({ ...loginForm, email: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
               <input type="password" placeholder="Password" value={loginForm.password} onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
               <button onClick={handleLogin} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">Login</button>
-              <button onClick={() => { setAuthMode('forgot'); setError(''); setRecoveredPassword(''); }} className="w-full text-slate-400 hover:text-white text-sm transition">Forgot Password?</button>
+              <button onClick={() => { setAuthMode('forgot'); setError(''); setSuccessMessage(''); }} className="w-full text-slate-400 hover:text-white text-sm transition">Forgot Password?</button>
             </div>
           )}
           {authMode === 'owner' && (
@@ -818,13 +928,20 @@ export default function MomentumApp() {
               <button onClick={handleMemberSignup} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-lg transition">Join Team</button>
             </div>
           )}
+          {authMode === 'verify' && (
+            <div className="space-y-4 text-center">
+              <div className="text-6xl mb-4">📧</div>
+              <h2 className="text-xl font-bold text-white">Check Your Email!</h2>
+              <p className="text-slate-400">We sent a verification link to your email address. Click the link to verify your account, then come back here to login.</p>
+              <button onClick={() => { setAuthMode('login'); setError(''); setSuccessMessage(''); setSignupForm({ name: '', email: '', password: '', confirm: '', inviteCode: '', orgName: '' }); }} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">← Back to Login</button>
+            </div>
+          )}
           {authMode === 'forgot' && (
             <div className="space-y-4">
-              <p className="text-slate-400 text-sm text-center">Enter your email to recover your password</p>
+              <p className="text-slate-400 text-sm text-center">Enter your email to reset your password</p>
               <input type="email" placeholder="Email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
-              <button onClick={handleForgotPassword} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">Recover Password</button>
-              {recoveredPassword && <div className="bg-green-500/20 border border-green-500 rounded-lg p-4"><p className="text-green-400 text-sm mb-2">Your password is:</p><code className="text-white text-lg font-mono bg-slate-700 px-3 py-2 rounded block text-center">{recoveredPassword}</code></div>}
-              <button onClick={() => { setAuthMode('login'); setError(''); setRecoveredPassword(''); setForgotEmail(''); }} className="w-full text-slate-400 hover:text-white text-sm transition">← Back to Login</button>
+              <button onClick={handleForgotPassword} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">Send Reset Link</button>
+              <button onClick={() => { setAuthMode('login'); setError(''); setSuccessMessage(''); setForgotEmail(''); }} className="w-full text-slate-400 hover:text-white text-sm transition">← Back to Login</button>
             </div>
           )}
           <p className="text-slate-600 text-center text-xs mt-6">Powered by AI Coastal Bridge</p>
