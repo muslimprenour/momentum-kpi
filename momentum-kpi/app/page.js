@@ -828,7 +828,8 @@ export default function MomentumApp() {
   }, [currentUser, organization]);
 
   useEffect(() => {
-    if (currentUser && organization && currentTab !== 'personal') loadTeamData();
+    // Refresh data whenever tab changes (ensures fresh data on all tabs including personal)
+    if (currentUser && organization) loadTeamData();
   }, [currentTab]);
 
   const loadUserNotes = async () => {
