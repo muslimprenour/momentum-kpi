@@ -802,6 +802,16 @@ export default function MomentumApp() {
     loadTeamData();
   };
 
+  const resyncUser = async (user) => {
+    const count = await importPendingOffers(user.id, user.name, user.organization_id);
+    if (count > 0) {
+      alert(`✅ Synced ${count} offer record(s) for ${user.display_name || user.name}!`);
+      loadTeamData();
+    } else {
+      alert(`No pending offers found for ${user.display_name || user.name}. Check that the name in Google Sheets matches.`);
+    }
+  };
+
   const openProfileModal = () => {
     setProfileForm({ display_name: currentUser.display_name || '', avatar_emoji: currentUser.avatar_emoji || '', avatar_url: currentUser.avatar_url || '' });
     setShowProfileModal(true);
@@ -1284,6 +1294,7 @@ export default function MomentumApp() {
                       <p className="text-white font-semibold">{u.display_name || u.name}</p>
                       <p className="text-slate-400 text-sm">{u.email}</p>
                     </div>
+                    <button onClick={() => resyncUser(u)} className="text-blue-400 hover:text-blue-300 text-sm px-2 py-1 bg-slate-600 rounded">🔄 Sync</button>
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${u.role === 'owner' ? 'bg-yellow-600' : 'bg-slate-600'} text-white`}>{u.role}</span>
                   </div>
                 ))}
