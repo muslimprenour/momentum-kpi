@@ -57,6 +57,8 @@ const db = {
   },
   invites: {
     getByCode: (code) => supabaseFetch(`invites?code=eq.${code}&is_active=eq.true&select=*`),
+    getByCodeAll: (code) => supabaseFetch(`invites?code=eq.${code}&select=*`),
+    reactivate: (code) => supabaseFetch(`invites?code=eq.${code}`, { method: 'PATCH', body: { is_active: true, used_by: null, used_at: null } }),
     create: (invite) => supabaseFetch('invites', { method: 'POST', body: [invite] }),
     use: (code, userId) => supabaseFetch(`invites?code=eq.${code}`, { method: 'PATCH', body: { used_by: userId, used_at: new Date().toISOString(), is_active: false } }),
     getByOrg: (orgId) => supabaseFetch(`invites?organization_id=eq.${orgId}&select=*`),
@@ -824,11 +826,21 @@ export default function MomentumApp() {
     let code;
     if (useCustom && customInviteCode.trim()) {
       code = customInviteCode.trim().toUpperCase();
-      // Check if code already exists
-      const { data: existing } = await db.invites.getByCode(code);
+      // Check if code already exists (active or inactive)
+      const { data: existing } = await db.invites.getByCodeAll(code);
       if (existing?.length > 0) {
-        alert('This invite code already exists. Please choose a different one.');
-        return;
+        const existingCode = existing[0];
+        if (existingCode.is_active) {
+          alert('This invite code is already active!');
+          setCustomInviteCode('');
+          return;
+        } else {
+          // Reactivate the old code
+          await db.invites.reactivate(code);
+          setCustomInviteCode('');
+          loadTeamData();
+          return;
+        }
       }
     } else {
       code = generateInviteCode();
