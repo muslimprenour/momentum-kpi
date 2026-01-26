@@ -219,34 +219,34 @@ const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
     <div className={`relative overflow-hidden rounded-2xl border ${isComplete ? 'border-green-500/30 bg-gradient-to-br from-green-950/40 via-slate-800 to-slate-800' : 'border-slate-700 bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900'}`}>
       {isComplete && <div className="absolute inset-0 bg-gradient-to-r from-green-500/5 to-transparent"></div>}
       
-      <div className="relative p-6">
+      <div className="relative p-4 sm:p-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 sm:mb-6">
           <div>
-            <h3 className="text-xl font-bold text-white">Offers Submitted</h3>
+            <h3 className="text-lg sm:text-xl font-bold text-white">Offers Submitted</h3>
             {isGoogleSync && (
-              <p className="text-sm text-green-400 mt-0.5">📊 Synced from Google Sheets</p>
+              <p className="text-xs sm:text-sm text-green-400 mt-0.5">📊 Synced from Google Sheets</p>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-3xl">{status.emoji}</span>
-            <span className={`text-lg font-extrabold tracking-wide bg-gradient-to-r ${status.color} bg-clip-text text-transparent`}>
+            <span className="text-2xl sm:text-3xl">{status.emoji}</span>
+            <span className={`text-sm sm:text-lg font-extrabold tracking-wide bg-gradient-to-r ${status.color} bg-clip-text text-transparent`}>
               {status.text}
             </span>
           </div>
         </div>
         
-        {/* Main Content */}
-        <div className="flex items-center gap-8">
-          <CircularProgress percentage={percentage} size={130} strokeWidth={10} />
+        {/* Main Content - Stack on mobile, side by side on desktop */}
+        <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
+          <CircularProgress percentage={percentage} size={100} strokeWidth={8} />
           
-          <div className="flex-1 space-y-4">
-            <div>
-              <div className="flex items-baseline gap-2">
-                <span className={`text-4xl font-bold tracking-tight ${isComplete ? 'text-green-400' : 'text-white'}`}>{offers}</span>
-                <span className="text-slate-500 text-lg font-medium">/ {goal}</span>
+          <div className="flex-1 w-full space-y-3 sm:space-y-4">
+            <div className="text-center sm:text-left">
+              <div className="flex items-baseline justify-center sm:justify-start gap-2">
+                <span className={`text-3xl sm:text-4xl font-bold tracking-tight ${isComplete ? 'text-green-400' : 'text-white'}`}>{offers}</span>
+                <span className="text-slate-500 text-base sm:text-lg font-medium">/ {goal}</span>
               </div>
-              <p className="text-slate-500 text-sm mt-1">Daily Target</p>
+              <p className="text-slate-500 text-xs sm:text-sm mt-1">Daily Target</p>
             </div>
             
             <div>
@@ -259,9 +259,9 @@ const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center sm:justify-start gap-1 sm:gap-2 flex-wrap">
               {[25, 50, 75, 100].map((milestone) => (
-                <div key={milestone} className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-all ${percentage >= milestone ? milestone === 100 ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-slate-700 text-slate-300' : 'bg-slate-800 text-slate-600 border border-slate-700'}`}>
+                <div key={milestone} className={`flex items-center gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium transition-all ${percentage >= milestone ? milestone === 100 ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-slate-700 text-slate-300' : 'bg-slate-800 text-slate-600 border border-slate-700'}`}>
                   {percentage >= milestone && <span>✓</span>}
                   <span>{milestone}%</span>
                 </div>
@@ -271,10 +271,10 @@ const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
         </div>
         
         {!isGoogleSync && (
-          <div className="flex gap-2 mt-6 pt-4 border-t border-slate-700/50">
-            <button onClick={() => onUpdate(offers - 1)} className="flex-1 bg-slate-700/50 hover:bg-slate-700 text-slate-300 hover:text-white py-2.5 rounded-xl font-medium transition-all border border-slate-600/50">− 1</button>
-            <button onClick={() => onUpdate(offers + 1)} className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-indigo-500/20">+ 1</button>
-            <button onClick={() => onUpdate(offers + 5)} className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-indigo-500/20">+ 5</button>
+          <div className="flex gap-2 mt-4 sm:mt-6 pt-4 border-t border-slate-700/50">
+            <button onClick={() => onUpdate(offers - 1)} className="flex-1 bg-slate-700/50 hover:bg-slate-700 text-slate-300 hover:text-white py-2 sm:py-2.5 rounded-xl font-medium transition-all border border-slate-600/50 text-sm sm:text-base">− 1</button>
+            <button onClick={() => onUpdate(offers + 1)} className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-2 sm:py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-indigo-500/20 text-sm sm:text-base">+ 1</button>
+            <button onClick={() => onUpdate(offers + 5)} className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-2 sm:py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-indigo-500/20 text-sm sm:text-base">+ 5</button>
           </div>
         )}
       </div>
@@ -1135,7 +1135,30 @@ export default function MomentumApp() {
 
         {/* Header */}
         <div className="bg-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          {/* Mobile Layout */}
+          <div className="md:hidden">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">⚡</span>
+                <h1 className="text-lg font-extrabold text-white">{organization?.name || 'Momentum'}</h1>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={openProfileModal} className="hover:opacity-80 transition"><UserAvatar user={currentUser} size="sm" /></button>
+                <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Logout</button>
+              </div>
+            </div>
+            <div className="text-center mb-3">
+              <p className="text-slate-400 text-xs mb-1">{currentTime.toLocaleDateString('en-US', { timeZone: ORG_TIMEZONE, weekday: 'short', month: 'short', day: 'numeric' })}</p>
+              <div className="text-3xl font-black text-white">{currentTime.toLocaleTimeString('en-US', { timeZone: ORG_TIMEZONE, hour: '2-digit', minute: '2-digit' })}</div>
+              <div className="flex items-center justify-center gap-1 mt-1">
+                <span className="text-xl">{motivation.emoji}</span>
+                <span className="text-sm font-bold bg-gradient-to-r from-green-400 via-emerald-400 to-teal-400 bg-clip-text text-transparent">{motivation.text}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop Layout */}
+          <div className="hidden md:flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <span className="text-4xl">⚡</span>
               <div>
@@ -1160,23 +1183,24 @@ export default function MomentumApp() {
             </div>
           </div>
           
-          <div className="flex gap-2 mt-4 flex-wrap">
+          {/* Tabs - scrollable on mobile */}
+          <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
             {['personal', 'team', 'analytics', 'history', 'notes'].map(tab => (
-              <button key={tab} onClick={() => setCurrentTab(tab)} className={`px-4 py-2 rounded-lg font-semibold transition ${currentTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
+              <button key={tab} onClick={() => setCurrentTab(tab)} className={`px-3 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm ${currentTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
                 {tab === 'notes' ? '📝 Notes' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
             {currentUser?.role === 'owner' && (
-              <button onClick={() => setCurrentTab('admin')} className={`px-4 py-2 rounded-lg font-semibold transition ${currentTab === 'admin' ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>Admin</button>
+              <button onClick={() => setCurrentTab('admin')} className={`px-3 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm ${currentTab === 'admin' ? 'bg-red-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>Admin</button>
             )}
           </div>
         </div>
 
         {currentTab === 'personal' && (
           <div className="space-y-4">
-            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 flex items-center gap-4">
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 flex flex-col sm:flex-row items-center gap-4">
               <button onClick={openProfileModal} className="hover:opacity-80 transition"><UserAvatar user={currentUser} size="lg" /></button>
-              <div className="flex-1">
+              <div className="flex-1 text-center sm:text-left">
                 <p className="text-white font-bold text-xl">{displayName}</p>
                 <p className="text-slate-400 text-sm">Your daily KPIs</p>
               </div>
@@ -1258,21 +1282,21 @@ export default function MomentumApp() {
         {currentTab === 'team' && (
           <div className="space-y-4">
             <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                 <h2 className="text-xl font-bold text-white">🏆 Leaderboard</h2>
                 <div className="flex gap-2">
-                  {['week', 'month'].map(p => <button key={p} onClick={() => setLeaderboardPeriod(p)} className={`px-4 py-2 rounded-lg font-semibold ${leaderboardPeriod === p ? 'bg-yellow-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{p === 'week' ? 'Week' : 'Month'}</button>)}
+                  {['week', 'month'].map(p => <button key={p} onClick={() => setLeaderboardPeriod(p)} className={`px-3 sm:px-4 py-1 sm:py-2 rounded-lg text-sm font-semibold ${leaderboardPeriod === p ? 'bg-yellow-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{p === 'week' ? 'Week' : 'Month'}</button>)}
                 </div>
               </div>
               {getLeaderboard().map((e, i) => (
-                <div key={e.user.id} className="bg-slate-700 rounded-lg p-4 mb-2 flex items-center gap-4">
-                  <span className="text-3xl">{['🥇', '🥈', '🥉', '🏅'][i] || '🏅'}</span>
+                <div key={e.user.id} className="bg-slate-700 rounded-lg p-3 sm:p-4 mb-2 flex items-center gap-2 sm:gap-4">
+                  <span className="text-2xl sm:text-3xl">{['🥇', '🥈', '🥉', '🏅'][i] || '🏅'}</span>
                   <UserAvatar user={e.user} size="sm" />
-                  <div className="flex-1">
-                    <p className="text-white font-bold">{e.user.display_name || e.user.name}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-bold text-sm sm:text-base truncate">{e.user.display_name || e.user.name}</p>
                     <p className="text-slate-400 text-xs">Offers: {e.stats.offers} | Texts: {e.stats.texts} | Calls: {e.stats.calls}</p>
                   </div>
-                  <div className="text-2xl font-bold text-yellow-400">{e.score}</div>
+                  <div className="text-xl sm:text-2xl font-bold text-yellow-400">{e.score}</div>
                 </div>
               ))}
             </div>
@@ -1282,31 +1306,31 @@ export default function MomentumApp() {
         {currentTab === 'analytics' && (
           <div className="space-y-4">
             <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                 <h2 className="text-xl font-bold text-white">📊 Analytics</h2>
-                <div className="flex gap-2">
-                  {['daily', 'weekly', 'monthly', 'quarterly'].map(p => <button key={p} onClick={() => setAnalyticsPeriod(p)} className={`px-3 py-1 rounded text-sm font-semibold ${analyticsPeriod === p ? 'bg-green-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{p.charAt(0).toUpperCase() + p.slice(1)}</button>)}
+                <div className="flex gap-1 sm:gap-2 overflow-x-auto w-full sm:w-auto">
+                  {['daily', 'weekly', 'monthly', 'quarterly'].map(p => <button key={p} onClick={() => setAnalyticsPeriod(p)} className={`px-2 sm:px-3 py-1 rounded text-xs sm:text-sm font-semibold whitespace-nowrap ${analyticsPeriod === p ? 'bg-green-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{p.charAt(0).toUpperCase() + p.slice(1)}</button>)}
                 </div>
               </div>
-              <div className="grid grid-cols-5 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3">
                 {(() => {
                   const t = getTeamTotals(analyticsPeriod);
                   const teamSize = teamMembers.length || 1;
                   const goalMultipliers = { daily: [1, 1, 1, 1, 1], weekly: [7, 7, 7, 1, 1], monthly: [30, 30, 30, 4, 1], quarterly: [90, 90, 90, 12, 3] }[analyticsPeriod];
                   const teamGoals = [goals.daily_offers * teamSize * goalMultipliers[0], (goals.daily_new_agents + goals.daily_follow_ups) * teamSize * goalMultipliers[1], goals.daily_calls * teamSize * goalMultipliers[2], goals.weekly_contracts * teamSize * goalMultipliers[3], goals.monthly_closed * teamSize * goalMultipliers[4]];
                   return [['Offers', t.offers, teamGoals[0]], ['Texts', t.texts, teamGoals[1]], ['Calls', t.calls, teamGoals[2]], ['UC', t.contracts, teamGoals[3]], ['Closed', t.closed, teamGoals[4]]].map(([n, v, g]) => (
-                    <div key={n} className="bg-slate-700 rounded-lg p-3 text-center">
+                    <div key={n} className="bg-slate-700 rounded-lg p-2 sm:p-3 text-center">
                       <p className="text-slate-400 text-xs">{n}</p>
-                      <p className="text-2xl font-bold text-white">{v}</p>
+                      <p className="text-lg sm:text-2xl font-bold text-white">{v}</p>
                       <p className="text-xs text-slate-500">/{g}</p>
                     </div>
                   ));
                 })()}
               </div>
             </div>
-            <div className="flex gap-4">
-              <button onClick={exportCSV} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg">📥 Export CSV</button>
-              <button onClick={copySummary} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg">📋 Copy Summary</button>
+            <div className="flex gap-2 sm:gap-4">
+              <button onClick={exportCSV} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 sm:py-3 rounded-lg text-sm sm:text-base">📥 Export</button>
+              <button onClick={copySummary} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 sm:py-3 rounded-lg text-sm sm:text-base">📋 Copy</button>
             </div>
           </div>
         )}
@@ -1322,7 +1346,7 @@ export default function MomentumApp() {
               return (
                 <div key={user.id} className="bg-slate-800 rounded-xl p-4 border border-slate-700">
                   <div className="flex items-center gap-3 mb-2"><UserAvatar user={user} size="sm" /><h3 className="text-white font-bold">{user.display_name || user.name}</h3></div>
-                  <div className="grid grid-cols-6 gap-2 text-sm">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-sm">
                     {[['Offers', k.offers], ['New', k.new_agents], ['Follow', k.follow_ups], ['Calls', k.phone_calls], ['UC', k.deals_under_contract], ['Closed', k.deals_closed]].map(([l, v]) => (
                       <div key={l} className="bg-slate-700 rounded p-2 text-center"><p className="text-slate-400 text-xs">{l}</p><p className="text-white font-bold">{v || 0}</p></div>
                     ))}
