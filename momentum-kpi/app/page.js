@@ -1195,7 +1195,7 @@ export default function MomentumApp() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 p-2 sm:p-4">
+    <div className="min-h-screen bg-slate-900 p-3 md:p-4 pb-24 md:pb-4">
       <div className="max-w-6xl mx-auto">
         {showProfileModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -1225,32 +1225,25 @@ export default function MomentumApp() {
           </div>
         )}
 
-        {/* Header */}
-        <div className="bg-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
-          {/* Mobile Layout */}
-          <div className="md:hidden">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">⚡</span>
-                <h1 className="text-lg font-extrabold text-white">{organization?.name || 'Momentum'}</h1>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={openProfileModal} className="hover:opacity-80 transition"><UserAvatar user={currentUser} size="sm" /></button>
-                <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Logout</button>
+        {/* ========== MOBILE HEADER (Clean, minimal) ========== */}
+        <div className="md:hidden">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">⚡</span>
+              <div>
+                <h1 className="text-lg font-bold text-white">{organization?.name || 'Momentum'}</h1>
+                <p className="text-slate-500 text-xs">{currentTime.toLocaleDateString('en-US', { timeZone: ORG_TIMEZONE, weekday: 'short', month: 'short', day: 'numeric' })}</p>
               </div>
             </div>
-            <div className="text-center mb-3">
-              <p className="text-slate-400 text-xs mb-1">{currentTime.toLocaleDateString('en-US', { timeZone: ORG_TIMEZONE, weekday: 'short', month: 'short', day: 'numeric' })}</p>
-              <div className="text-3xl font-black text-white">{currentTime.toLocaleTimeString('en-US', { timeZone: ORG_TIMEZONE, hour: '2-digit', minute: '2-digit' })}</div>
-              <div className="flex items-center justify-center gap-1 mt-1">
-                <span className="text-xl">{motivation.emoji}</span>
-                <span className="text-sm font-bold bg-gradient-to-r from-green-400 via-emerald-400 to-teal-400 bg-clip-text text-transparent">{motivation.text}</span>
-              </div>
-            </div>
+            <button onClick={openProfileModal} className="w-10 h-10 rounded-full overflow-hidden ring-2 ring-slate-700 hover:ring-blue-500 transition-all">
+              <UserAvatar user={currentUser} size="md" />
+            </button>
           </div>
+        </div>
 
-          {/* Desktop Layout */}
-          <div className="hidden md:flex flex-wrap items-center justify-between gap-4">
+        {/* ========== DESKTOP HEADER (unchanged) ========== */}
+        <div className="hidden md:block bg-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <span className="text-4xl">⚡</span>
               <div>
@@ -1275,7 +1268,7 @@ export default function MomentumApp() {
             </div>
           </div>
           
-          {/* Tabs - scrollable on mobile */}
+          {/* Desktop Tabs */}
           <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
             {['personal', 'team', 'analytics', 'history', 'notes'].map(tab => (
               <button key={tab} onClick={() => setCurrentTab(tab)} className={`px-3 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm ${currentTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
@@ -1288,11 +1281,67 @@ export default function MomentumApp() {
           </div>
         </div>
 
+        {/* ========== MOBILE BOTTOM NAV ========== */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 px-2 py-2 z-40">
+          <div className="flex justify-around items-center max-w-md mx-auto">
+            {[
+              { id: 'personal', icon: '🏠', label: 'Home' },
+              { id: 'team', icon: '🏆', label: 'Team' },
+              { id: 'analytics', icon: '📊', label: 'Stats' },
+              { id: 'notes', icon: '📝', label: 'Notes' },
+              { id: 'more', icon: '•••', label: 'More' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  if (tab.id === 'more') {
+                    // Toggle between history and admin
+                    if (currentTab === 'history' || currentTab === 'admin') {
+                      setCurrentTab('personal');
+                    } else {
+                      setCurrentTab('history');
+                    }
+                  } else {
+                    setCurrentTab(tab.id);
+                  }
+                }}
+                className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
+                  (tab.id === currentTab || (tab.id === 'more' && (currentTab === 'history' || currentTab === 'admin')))
+                    ? 'text-blue-400'
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                <span className="text-xl">{tab.icon}</span>
+                <span className="text-[10px] font-medium mt-0.5">{tab.label}</span>
+              </button>
+            ))}
+          </div>
+          {/* Safe area padding for iPhone */}
+          <div className="h-safe-area-inset-bottom" />
+        </div>
+
         {currentTab === 'personal' && (
           <div className="space-y-4">
-            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 flex flex-col sm:flex-row items-center gap-4">
+            {/* Mobile: Motivation Banner */}
+            <div className="md:hidden bg-gradient-to-r from-slate-800 to-slate-800/50 rounded-2xl p-4 border border-slate-700/50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-slate-400 text-sm">Hey {displayName?.split(' ')[0] || 'there'} 👋</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-2xl">{motivation.emoji}</span>
+                    <span className="text-lg font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">{motivation.text}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-black text-white">{currentTime.toLocaleTimeString('en-US', { timeZone: ORG_TIMEZONE, hour: '2-digit', minute: '2-digit' })}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Desktop: Profile Card (unchanged) */}
+            <div className="hidden md:flex bg-slate-800 rounded-xl p-4 border border-slate-700 items-center gap-4">
               <button onClick={openProfileModal} className="hover:opacity-80 transition"><UserAvatar user={currentUser} size="lg" /></button>
-              <div className="flex-1 text-center sm:text-left">
+              <div className="flex-1 text-left">
                 <p className="text-white font-bold text-xl">{displayName}</p>
                 <p className="text-slate-400 text-sm">Your daily KPIs</p>
               </div>
@@ -1301,60 +1350,87 @@ export default function MomentumApp() {
 
             <OffersCard offers={myKPI.offers || 0} goal={goals.daily_offers} isGoogleSync={organization?.google_sheet_sync} onUpdate={(value) => updateKPI('offers', value)} />
 
-            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-white font-bold">Phone Conversations</span>
-                <span className="text-white text-2xl font-bold">{myKPI.phone_calls || 0}/{goals.daily_calls}</span>
+            {/* Phone Conversations Card */}
+            <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 md:p-4 border border-slate-700/50 md:border-slate-700">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <p className="text-slate-400 text-xs md:text-sm uppercase tracking-wide">Phone Calls</p>
+                  <p className="text-4xl md:text-2xl font-black text-white mt-1">{myKPI.phone_calls || 0}<span className="text-lg md:text-base text-slate-500 font-normal">/{goals.daily_calls}</span></p>
+                </div>
+                <div className="w-12 h-12 md:w-10 md:h-10 rounded-xl md:rounded-lg bg-green-500/20 flex items-center justify-center">
+                  <span className="text-2xl md:text-xl">📞</span>
+                </div>
               </div>
-              <div className="w-full bg-slate-700 rounded-full h-3 mb-2">
-                <div className={`h-3 rounded-full ${pColor(myKPI.phone_calls || 0, goals.daily_calls)}`} style={{ width: `${pct(myKPI.phone_calls || 0, goals.daily_calls)}%` }}></div>
+              <div className="w-full bg-slate-700/50 rounded-full h-2 mb-4">
+                <div className={`h-2 rounded-full transition-all ${pColor(myKPI.phone_calls || 0, goals.daily_calls)}`} style={{ width: `${pct(myKPI.phone_calls || 0, goals.daily_calls)}%` }}></div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) - 1)} className="flex-1 bg-slate-600 text-white py-3 rounded-lg text-base font-medium active:bg-slate-500">-1</button>
-                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 1)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg text-base font-medium active:bg-green-500">+1</button>
-                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 5)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg text-base font-medium active:bg-green-500">+5</button>
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) - 1)} className="flex-1 bg-slate-700/80 hover:bg-slate-600 text-white py-3.5 md:py-3 rounded-xl md:rounded-lg text-base font-semibold active:scale-95 transition-all">−1</button>
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 1)} className="flex-1 bg-green-600 hover:bg-green-500 text-white py-3.5 md:py-3 rounded-xl md:rounded-lg text-base font-semibold active:scale-95 transition-all">+1</button>
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 5)} className="flex-1 bg-green-600 hover:bg-green-500 text-white py-3.5 md:py-3 rounded-xl md:rounded-lg text-base font-semibold active:scale-95 transition-all">+5</button>
               </div>
             </div>
 
-            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-white font-bold">Agent Texts</span>
-                <span className="text-white text-2xl font-bold">{totalTexts}/{goals.daily_new_agents + goals.daily_follow_ups}</span>
+            {/* Agent Texts Card */}
+            <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 md:p-4 border border-slate-700/50 md:border-slate-700">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <p className="text-slate-400 text-xs md:text-sm uppercase tracking-wide">Agent Texts</p>
+                  <p className="text-4xl md:text-2xl font-black text-white mt-1">{totalTexts}<span className="text-lg md:text-base text-slate-500 font-normal">/{goals.daily_new_agents + goals.daily_follow_ups}</span></p>
+                </div>
+                <div className="w-12 h-12 md:w-10 md:h-10 rounded-xl md:rounded-lg bg-blue-500/20 flex items-center justify-center">
+                  <span className="text-2xl md:text-xl">💬</span>
+                </div>
               </div>
-              <div className="w-full bg-slate-700 rounded-full h-3 mb-4">
-                <div className={`h-3 rounded-full ${pColor(totalTexts, goals.daily_new_agents + goals.daily_follow_ups)}`} style={{ width: `${pct(totalTexts, goals.daily_new_agents + goals.daily_follow_ups)}%` }}></div>
+              <div className="w-full bg-slate-700/50 rounded-full h-2 mb-4">
+                <div className={`h-2 rounded-full transition-all ${pColor(totalTexts, goals.daily_new_agents + goals.daily_follow_ups)}`} style={{ width: `${pct(totalTexts, goals.daily_new_agents + goals.daily_follow_ups)}%` }}></div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                {[{ label: 'New Agents', field: 'new_agents', goal: goals.daily_new_agents }, { label: 'Follow-ups', field: 'follow_ups', goal: goals.daily_follow_ups }].map(({ label, field, goal }) => (
-                  <div key={field} className="bg-slate-700 rounded-lg p-3">
-                    <p className="text-slate-400 text-xs">{label}: {myKPI[field] || 0}/{goal}</p>
-                    <div className="flex gap-2 mt-2">
-                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) - 10)} className="flex-1 bg-slate-600 text-white py-2 rounded text-sm font-medium active:bg-slate-500">-10</button>
-                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) + 10)} className="flex-1 bg-green-600 text-white py-2 rounded text-sm font-medium active:bg-green-500">+10</button>
-                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) + 50)} className="flex-1 bg-green-700 text-white py-2 rounded text-sm font-medium active:bg-green-600">+50</button>
+              <div className="grid grid-cols-2 gap-3">
+                {[{ label: 'New Agents', field: 'new_agents', goal: goals.daily_new_agents, emoji: '🆕' }, { label: 'Follow-ups', field: 'follow_ups', goal: goals.daily_follow_ups, emoji: '🔄' }].map(({ label, field, goal, emoji }) => (
+                  <div key={field} className="bg-slate-700/50 rounded-xl md:rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm">{emoji}</span>
+                      <p className="text-slate-300 text-sm font-medium">{label}</p>
+                    </div>
+                    <p className="text-2xl md:text-xl font-bold text-white mb-2">{myKPI[field] || 0}<span className="text-sm text-slate-500">/{goal}</span></p>
+                    <div className="flex gap-1.5">
+                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) - 10)} className="flex-1 bg-slate-600/80 text-white py-2.5 md:py-2 rounded-lg text-sm font-semibold active:scale-95 transition-all">−10</button>
+                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) + 10)} className="flex-1 bg-blue-600 text-white py-2.5 md:py-2 rounded-lg text-sm font-semibold active:scale-95 transition-all">+10</button>
+                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) + 50)} className="flex-1 bg-blue-700 text-white py-2.5 md:py-2 rounded-lg text-sm font-semibold active:scale-95 transition-all">+50</button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-                <p className="text-white font-bold">Deals Under Contract</p>
-                <p className="text-xs text-slate-400 mb-1">Weekly Goal: {goals.weekly_contracts}</p>
-                <p className="text-3xl font-bold text-purple-400">{weeklyStats.contracts}/{goals.weekly_contracts}</p>
-                <div className="flex gap-2 mt-2">
-                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) - 1)} className="flex-1 bg-slate-600 text-white py-3 rounded-lg font-medium active:bg-slate-500">-1</button>
-                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) + 1)} className="flex-1 bg-purple-600 text-white py-3 rounded-lg font-medium active:bg-purple-500">+1</button>
+            {/* Deals Row */}
+            <div className="grid grid-cols-2 gap-3 md:gap-4">
+              <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                    <span className="text-base">📋</span>
+                  </div>
+                  <p className="text-slate-400 text-xs uppercase tracking-wide">Under Contract</p>
+                </div>
+                <p className="text-3xl md:text-3xl font-black text-purple-400">{weeklyStats.contracts}<span className="text-base text-slate-500 font-normal">/{goals.weekly_contracts}</span></p>
+                <p className="text-[10px] text-slate-500 mb-3">Weekly Goal</p>
+                <div className="flex gap-2">
+                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) - 1)} className="flex-1 bg-slate-700/80 text-white py-3 rounded-xl md:rounded-lg font-semibold active:scale-95 transition-all">−1</button>
+                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) + 1)} className="flex-1 bg-purple-600 text-white py-3 rounded-xl md:rounded-lg font-semibold active:scale-95 transition-all">+1</button>
                 </div>
               </div>
-              <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-                <p className="text-white font-bold">Deals Closed</p>
-                <p className="text-xs text-slate-400 mb-1">Monthly Goal: {goals.monthly_closed}</p>
-                <p className="text-3xl font-bold text-yellow-400">{monthlyStats.closed}/{goals.monthly_closed}</p>
-                <div className="flex gap-2 mt-2">
-                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) - 1)} className="flex-1 bg-slate-600 text-white py-3 rounded-lg font-medium active:bg-slate-500">-1</button>
-                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) + 1)} className="flex-1 bg-yellow-600 text-white py-3 rounded-lg font-medium active:bg-yellow-500">+1</button>
+              <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
+                    <span className="text-base">🏆</span>
+                  </div>
+                  <p className="text-slate-400 text-xs uppercase tracking-wide">Closed</p>
+                </div>
+                <p className="text-3xl md:text-3xl font-black text-yellow-400">{monthlyStats.closed}<span className="text-base text-slate-500 font-normal">/{goals.monthly_closed}</span></p>
+                <p className="text-[10px] text-slate-500 mb-3">Monthly Goal</p>
+                <div className="flex gap-2">
+                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) - 1)} className="flex-1 bg-slate-700/80 text-white py-3 rounded-xl md:rounded-lg font-semibold active:scale-95 transition-all">−1</button>
+                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) + 1)} className="flex-1 bg-yellow-600 text-white py-3 rounded-xl md:rounded-lg font-semibold active:scale-95 transition-all">+1</button>
                 </div>
               </div>
             </div>
