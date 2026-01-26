@@ -506,7 +506,7 @@ export default function MomentumApp() {
   const [currentTab, setCurrentTab] = useState('personal');
   const [leaderboardPeriod, setLeaderboardPeriod] = useState('week');
   const [analyticsPeriod, setAnalyticsPeriod] = useState('daily');
-  const [historyDate, setHistoryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [historyDate, setHistoryDate] = useState(formatDateString(new Date()));
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileForm, setProfileForm] = useState({ display_name: '', avatar_emoji: '', avatar_url: '' });
   const [profileSaving, setProfileSaving] = useState(false);
@@ -516,7 +516,7 @@ export default function MomentumApp() {
   const [userNotes, setUserNotes] = useState([]);
   const [customInviteCode, setCustomInviteCode] = useState('');
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatDateString(new Date());
 
   const getGoals = () => organization?.kpi_goals ? { ...DEFAULT_KPI_GOALS, ...organization.kpi_goals } : DEFAULT_KPI_GOALS;
 
@@ -869,7 +869,10 @@ export default function MomentumApp() {
     const now = new Date();
     let startDateStr, endDateStr;
     if (period === 'week') {
-      const startDate = new Date(now); startDate.setDate(now.getDate() - now.getDay());
+      // Week starts on MONDAY and ends on SUNDAY
+      const dayOfWeek = now.getDay();
+      const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday = go back 6 days, else go back (day - 1)
+      const startDate = new Date(now); startDate.setDate(now.getDate() - daysFromMonday);
       const endDate = new Date(startDate); endDate.setDate(startDate.getDate() + 6);
       startDateStr = formatDateString(startDate); endDateStr = formatDateString(endDate);
     } else if (period === 'month') {
