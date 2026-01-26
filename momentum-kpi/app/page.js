@@ -1304,10 +1304,38 @@ export default function MomentumApp() {
     }
     return data;
   };
+
+  // Get this week's data (Monday-Sunday calendar week)
+  const getThisWeekTotal = (userId, field) => {
+    const userKPIs = teamKPIs[userId] || {};
+    const todayStr = getTodayInOrgTimezone();
+    const [year, month, day] = todayStr.split('-').map(Number);
+    const today = new Date(year, month - 1, day);
+    const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday = 6 days back, else day - 1
+    
+    let total = 0;
+    for (let i = daysFromMonday; i >= 0; i--) {
+      const d = new Date(year, month - 1, day - i);
+      const dateStr = formatDateString(d);
+      const kpi = userKPIs[dateStr] || {};
+      if (field === 'texts') {
+        total += (kpi.new_agents || 0) + (kpi.follow_ups || 0);
+      } else {
+        total += kpi[field] || 0;
+      }
+    }
+    return total;
+  };
   
   const myOffersTrend = getLast7DaysData(currentUser?.id, 'offers');
   const myCallsTrend = getLast7DaysData(currentUser?.id, 'phone_calls');
   const myTextsTrend = getLast7DaysData(currentUser?.id, 'texts');
+  
+  // This week totals (Mon-Sun)
+  const myOffersThisWeek = getThisWeekTotal(currentUser?.id, 'offers');
+  const myCallsThisWeek = getThisWeekTotal(currentUser?.id, 'phone_calls');
+  const myTextsThisWeek = getThisWeekTotal(currentUser?.id, 'texts');
 
   const pct = (c, g) => Math.min((c / g) * 100, 100);
   const pColor = (c, g) => pct(c, g) >= 100 ? 'bg-green-500' : pct(c, g) >= 50 ? 'bg-yellow-500' : 'bg-red-500';
@@ -1664,7 +1692,7 @@ export default function MomentumApp() {
                   <div className="flex justify-center mb-1">
                     <Sparkline data={myOffersTrend} color="#6366f1" width={80} height={30} />
                   </div>
-                  <p className="text-white font-bold">{myOffersTrend.reduce((a, b) => a + b, 0)}</p>
+                  <p className="text-white font-bold">{myOffersThisWeek}</p>
                   <p className="text-slate-500 text-[10px]">this week</p>
                 </div>
                 <div className="bg-slate-700/50 rounded-xl p-3 text-center">
@@ -1672,7 +1700,7 @@ export default function MomentumApp() {
                   <div className="flex justify-center mb-1">
                     <Sparkline data={myCallsTrend} color="#22c55e" width={80} height={30} />
                   </div>
-                  <p className="text-white font-bold">{myCallsTrend.reduce((a, b) => a + b, 0)}</p>
+                  <p className="text-white font-bold">{myCallsThisWeek}</p>
                   <p className="text-slate-500 text-[10px]">this week</p>
                 </div>
                 <div className="bg-slate-700/50 rounded-xl p-3 text-center">
@@ -1680,7 +1708,7 @@ export default function MomentumApp() {
                   <div className="flex justify-center mb-1">
                     <Sparkline data={myTextsTrend} color="#3b82f6" width={80} height={30} />
                   </div>
-                  <p className="text-white font-bold">{myTextsTrend.reduce((a, b) => a + b, 0)}</p>
+                  <p className="text-white font-bold">{myTextsThisWeek}</p>
                   <p className="text-slate-500 text-[10px]">this week</p>
                 </div>
               </div>
