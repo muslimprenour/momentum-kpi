@@ -68,7 +68,9 @@ const db = {
   },
   pendingOffers: {
     getByNameAndOrg: (name, orgId) => supabaseFetch(`pending_offers?rep_name=ilike.${encodeURIComponent(name)}&organization_id=eq.${orgId}&select=*`),
+    getByOrg: (orgId) => supabaseFetch(`pending_offers?organization_id=eq.${orgId}&select=*`),
     deleteByNameAndOrg: (name, orgId) => supabaseFetch(`pending_offers?rep_name=ilike.${encodeURIComponent(name)}&organization_id=eq.${orgId}`, { method: 'DELETE' }),
+    deleteById: (id) => supabaseFetch(`pending_offers?id=eq.${id}`, { method: 'DELETE' }),
   },
   notes: {
     getByUser: (userId) => supabaseFetch(`user_notes?user_id=eq.${userId}&select=*&order=updated_at.desc`),
@@ -87,13 +89,38 @@ const generateInviteCode = () => {
 
 const importPendingOffers = async (userId, userName, organizationId) => {
   try {
-    const { data: pendingOffers } = await db.pendingOffers.getByNameAndOrg(userName, organizationId);
-    if (!pendingOffers || pendingOffers.length === 0) return 0;
-    for (const pending of pendingOffers) {
+    // Get all pending offers for this org
+    const { data: allPendingOffers } = await db.pendingOffers.getByOrg(organizationId);
+    if (!allPendingOffers || allPendingOffers.length === 0) return 0;
+    
+    // Flexible name matching (case insensitive)
+    const userNameLower = userName.toLowerCase().trim();
+    const userFirstName = userNameLower.split(' ')[0];
+    
+    const matchingOffers = allPendingOffers.filter(pending => {
+      const sheetName = (pending.rep_name || '').toLowerCase().trim();
+      const sheetFirstName = sheetName.split(' ')[0];
+      
+      // Match if:
+      // 1. Exact match (case insensitive)
+      // 2. Sheet name is contained in user's full name (e.g. "John" in "John Smith")
+      // 3. User's first name matches sheet name (e.g. "John" === "John")
+      // 4. Sheet first name matches user's first name
+      return sheetName === userNameLower ||
+             userNameLower.includes(sheetName) ||
+             sheetName === userFirstName ||
+             sheetFirstName === userFirstName;
+    });
+    
+    if (matchingOffers.length === 0) return 0;
+    
+    // Import matching offers
+    for (const pending of matchingOffers) {
       await db.kpis.upsert({ user_id: userId, date: pending.date, offers: pending.offer_count, new_agents: 0, follow_ups: 0, phone_calls: 0, deals_under_contract: 0, deals_closed: 0, notes: '' });
+      await db.pendingOffers.deleteById(pending.id);
     }
-    await db.pendingOffers.deleteByNameAndOrg(userName, organizationId);
-    return pendingOffers.length;
+    
+    return matchingOffers.length;
   } catch (error) {
     console.error('Error importing pending offers:', error);
     return 0;
