@@ -77,6 +77,11 @@ const db = {
     create: (note) => supabaseFetch('user_notes', { method: 'POST', body: [note] }),
     update: (noteId, updates) => supabaseFetch(`user_notes?id=eq.${noteId}`, { method: 'PATCH', body: updates }),
     delete: (noteId) => supabaseFetch(`user_notes?id=eq.${noteId}`, { method: 'DELETE' }),
+  },
+  approvedNames: {
+    getByOrg: (orgId) => supabaseFetch(`approved_names?organization_id=eq.${orgId}&select=*&order=name.asc`),
+    create: (name, orgId) => supabaseFetch('approved_names', { method: 'POST', body: [{ name, organization_id: orgId }] }),
+    delete: (id) => supabaseFetch(`approved_names?id=eq.${id}`, { method: 'DELETE' }),
   }
 };
 
@@ -515,6 +520,8 @@ export default function MomentumApp() {
   const [kpiSaving, setKpiSaving] = useState(false);
   const [userNotes, setUserNotes] = useState([]);
   const [customInviteCode, setCustomInviteCode] = useState('');
+  const [approvedNames, setApprovedNames] = useState([]);
+  const [newApprovedName, setNewApprovedName] = useState('');
 
   const today = formatDateString(new Date());
 
@@ -600,6 +607,8 @@ export default function MomentumApp() {
     }
     const { data: inviteList } = await db.invites.getByOrg(organization.id);
     if (inviteList) setInvites(inviteList);
+    const { data: approvedList } = await db.approvedNames.getByOrg(organization.id);
+    if (approvedList) setApprovedNames(approvedList);
   };
 
   const handleOwnerSignup = async () => {
@@ -641,6 +650,39 @@ export default function MomentumApp() {
     // Validate invite code first
     const { data: inviteData } = await db.invites.getByCode(signupForm.inviteCode.toUpperCase());
     if (!inviteData?.[0]) { setError('Invalid or expired invite code'); return; }
+    const invite = inviteData[0];
+    
+    // Verify name exists in pending_offers (Google Sheet) OR approved_names list
+    const { data: pendingOffers } = await db.pendingOffers.getByOrg(invite.organization_id);
+    const { data: approvedList } = await db.approvedNames.getByOrg(invite.organization_id);
+    
+    const signupNameLower = signupForm.name.toLowerCase().trim();
+    const signupFirstName = signupNameLower.split(' ')[0];
+    
+    // Check pending_offers (from Google Sheet)
+    const matchedInPending = (pendingOffers || []).some(pending => {
+      const sheetName = (pending.rep_name || '').toLowerCase().trim();
+      const sheetFirstName = sheetName.split(' ')[0];
+      return sheetName === signupNameLower ||
+             signupNameLower.includes(sheetName) ||
+             sheetName === signupFirstName ||
+             sheetFirstName === signupFirstName;
+    });
+    
+    // Check approved_names list
+    const matchedInApproved = (approvedList || []).some(approved => {
+      const approvedName = (approved.name || '').toLowerCase().trim();
+      const approvedFirstName = approvedName.split(' ')[0];
+      return approvedName === signupNameLower ||
+             signupNameLower.includes(approvedName) ||
+             approvedName === signupFirstName ||
+             approvedFirstName === signupFirstName;
+    });
+    
+    if (!matchedInPending && !matchedInApproved) {
+      setError('Your name was not found in the team roster. Please contact your team admin.');
+      return;
+    }
     
     // Check if email already exists
     const { data: existing } = await db.users.getByEmail(signupForm.email);
@@ -736,7 +778,7 @@ export default function MomentumApp() {
         });
         if (userError || !userData?.[0]) { setError('Failed to create account'); return; }
         user = userData[0];
-        await db.invites.use(invite.code, user.id);
+        // Invite code stays active for reuse by other team members
         await importPendingOffers(user.id, user.name, invite.organization_id);
       } else {
         setError('Account setup incomplete. Please sign up again.');
@@ -810,6 +852,19 @@ export default function MomentumApp() {
     } else {
       alert(`No pending offers found for ${user.display_name || user.name}. Check that the name in Google Sheets matches.`);
     }
+  };
+
+  const addApprovedName = async () => {
+    if (!newApprovedName.trim()) return;
+    await db.approvedNames.create(newApprovedName.trim(), organization.id);
+    setNewApprovedName('');
+    loadTeamData();
+  };
+
+  const deleteApprovedName = async (id, name) => {
+    if (!confirm(`Remove "${name}" from approved list?`)) return;
+    await db.approvedNames.delete(id);
+    loadTeamData();
   };
 
   const openProfileModal = () => {
@@ -1286,6 +1341,32 @@ export default function MomentumApp() {
                     </div>
                   ))}
                   {invites.filter(i => i.is_active).length === 0 && <p className="text-slate-500 text-sm">No active invite codes yet.</p>}
+                </div>
+              </div>
+              <div className="mb-6">
+                <h3 className="text-white font-semibold mb-3">✅ Approved Names</h3>
+                <p className="text-slate-400 text-xs mb-3">Add names here to allow signup (in addition to names from Google Sheet)</p>
+                <div className="bg-slate-700 rounded-lg p-4 mb-4">
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={newApprovedName} 
+                      onChange={e => setNewApprovedName(e.target.value)} 
+                      placeholder="e.g. John or John Smith" 
+                      className="flex-1 bg-slate-600 text-white rounded-lg px-4 py-2 border border-slate-500 focus:border-green-500 focus:outline-none"
+                      onKeyPress={e => e.key === 'Enter' && addApprovedName()}
+                    />
+                    <button onClick={addApprovedName} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold">Add</button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {approvedNames.map(a => (
+                    <div key={a.id} className="bg-slate-700 rounded-lg p-3 flex justify-between items-center">
+                      <span className="text-white">{a.name}</span>
+                      <button onClick={() => deleteApprovedName(a.id, a.name)} className="text-red-400 hover:text-red-300 text-sm">🗑️ Remove</button>
+                    </div>
+                  ))}
+                  {approvedNames.length === 0 && <p className="text-slate-500 text-sm">No manually approved names. Names from Google Sheet are automatically allowed.</p>}
                 </div>
               </div>
               <div>
