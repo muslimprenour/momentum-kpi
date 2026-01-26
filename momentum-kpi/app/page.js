@@ -282,13 +282,14 @@ const OffersCard = ({ offers, goal, isGoogleSync, onUpdate }) => {
   );
 };
 
-// iOS-style Notes Component (Full Page)
+// iOS-style Notes Component (Mobile-First)
 const NotesApp = ({ userId, notes, setNotes }) => {
   const [selectedNote, setSelectedNote] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [mobileView, setMobileView] = useState('list'); // 'list' or 'editor'
 
   const filteredNotes = notes.filter(note => 
     note.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -309,6 +310,7 @@ const NotesApp = ({ userId, notes, setNotes }) => {
       setSelectedNote(data[0]);
       setEditTitle(data[0].title);
       setEditContent(data[0].content || '');
+      setMobileView('editor');
     }
   };
 
@@ -316,6 +318,11 @@ const NotesApp = ({ userId, notes, setNotes }) => {
     setSelectedNote(note);
     setEditTitle(note.title || '');
     setEditContent(note.content || '');
+    setMobileView('editor');
+  };
+
+  const goBackToList = () => {
+    setMobileView('list');
   };
 
   const saveNote = async () => {
@@ -340,6 +347,7 @@ const NotesApp = ({ userId, notes, setNotes }) => {
     setSelectedNote(null);
     setEditTitle('');
     setEditContent('');
+    setMobileView('list');
   };
 
   const formatDate = (dateStr) => {
@@ -358,9 +366,93 @@ const NotesApp = ({ userId, notes, setNotes }) => {
     return content.substring(0, 50) + (content.length > 50 ? '...' : '');
   };
 
+  // Mobile Note List
+  const NoteList = () => (
+    <div className="flex flex-col h-full">
+      <div className="p-4 border-b border-slate-700">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <span>📝</span> Notes
+          </h3>
+          <button onClick={createNewNote} className="w-10 h-10 bg-amber-500 hover:bg-amber-400 rounded-lg flex items-center justify-center text-white transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
+              <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+            </svg>
+          </button>
+        </div>
+        <div className="relative">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500">
+            <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+          </svg>
+          <input type="text" placeholder="Search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-700/50 text-white rounded-lg pl-9 pr-4 py-3 text-base border border-slate-600 focus:border-amber-500 focus:outline-none" />
+        </div>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto">
+        {filteredNotes.length === 0 ? (
+          <div className="p-4 text-center text-slate-500 text-sm">
+            {notes.length === 0 ? 'No notes yet. Create one!' : 'No notes found'}
+          </div>
+        ) : (
+          filteredNotes.map(note => (
+            <div key={note.id} onClick={() => selectNote(note)} className={`p-4 border-b border-slate-700/50 cursor-pointer transition-colors active:bg-slate-700/50 ${selectedNote?.id === note.id ? 'bg-amber-500/20 border-l-4 border-l-amber-500' : ''}`}>
+              <h4 className="text-white font-medium text-base truncate">{note.title || 'Untitled'}</h4>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-slate-500 text-sm">{formatDate(note.updated_at)}</span>
+                <span className="text-slate-600 text-sm truncate">{getPreview(note.content)}</span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      
+      <div className="p-3 border-t border-slate-700 text-center">
+        <span className="text-slate-500 text-sm">{notes.length} {notes.length === 1 ? 'Note' : 'Notes'}</span>
+      </div>
+    </div>
+  );
+
+  // Mobile Note Editor
+  const NoteEditor = () => (
+    <div className="flex flex-col h-full">
+      <div className="p-3 border-b border-slate-700 flex items-center justify-between">
+        <button onClick={goBackToList} className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-medium py-2 px-1">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+            <path fillRule="evenodd" d="M17 10a.75.75 0 01-.75.75H5.612l4.158 3.96a.75.75 0 11-1.04 1.08l-5.5-5.25a.75.75 0 010-1.08l5.5-5.25a.75.75 0 111.04 1.08L5.612 9.25H16.25A.75.75 0 0117 10z" clipRule="evenodd" />
+          </svg>
+          Notes
+        </button>
+        <div className="flex items-center gap-2">
+          {isSaving && <span className="text-amber-400 text-xs">Saving...</span>}
+          <button onClick={saveNote} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white text-sm font-medium rounded-lg transition-colors">Save</button>
+          <button onClick={deleteNote} className="p-2 text-slate-500 hover:text-red-400 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+              <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.519.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      {selectedNote && (
+        <>
+          <input type="text" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Title" className="px-4 py-3 bg-transparent text-white text-xl font-semibold border-none focus:outline-none placeholder-slate-600" />
+          <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} placeholder="Start typing..." className="flex-1 px-4 py-2 bg-transparent text-slate-300 text-base resize-none border-none focus:outline-none placeholder-slate-600 leading-relaxed" />
+          <div className="p-3 border-t border-slate-700">
+            <p className="text-slate-500 text-xs text-center">{selectedNote.updated_at && `Last edited ${formatDate(selectedNote.updated_at)}`}</p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
-    <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden" style={{ height: '500px' }}>
-      <div className="flex h-full">
+    <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden" style={{ minHeight: '400px', maxHeight: '70vh' }}>
+      {/* Mobile Layout */}
+      <div className="md:hidden h-full" style={{ minHeight: '400px' }}>
+        {mobileView === 'list' ? <NoteList /> : <NoteEditor />}
+      </div>
+
+      {/* Desktop Layout */}
+      <div className="hidden md:flex h-full" style={{ height: '500px' }}>
         {/* Sidebar */}
         <div className="w-72 border-r border-slate-700 flex flex-col bg-slate-800/50">
           <div className="p-4 border-b border-slate-700">
