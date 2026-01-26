@@ -161,6 +161,103 @@ const formatDateString = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+// Mini Sparkline Component for trends
+const Sparkline = ({ data, color = '#3b82f6', height = 40, width = 120 }) => {
+  if (!data || data.length < 2) return null;
+  
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  
+  const points = data.map((value, i) => {
+    const x = (i / (data.length - 1)) * width;
+    const y = height - ((value - min) / range) * (height - 8) - 4;
+    return `${x},${y}`;
+  }).join(' ');
+  
+  const trend = data[data.length - 1] - data[0];
+  const trendColor = trend > 0 ? '#22c55e' : trend < 0 ? '#ef4444' : color;
+  
+  return (
+    <svg width={width} height={height} className="overflow-visible">
+      <polyline
+        points={points}
+        fill="none"
+        stroke={trendColor}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* End dot */}
+      <circle
+        cx={(data.length - 1) / (data.length - 1) * width}
+        cy={height - ((data[data.length - 1] - min) / range) * (height - 8) - 4}
+        r="3"
+        fill={trendColor}
+      />
+    </svg>
+  );
+};
+
+// Streak Calculator
+const calculateStreak = (userKPIs, goal) => {
+  if (!userKPIs) return { current: 0, best: 0 };
+  
+  const dates = Object.keys(userKPIs).sort().reverse(); // Most recent first
+  let currentStreak = 0;
+  let bestStreak = 0;
+  let tempStreak = 0;
+  
+  // Calculate current streak (consecutive days hitting goal, starting from most recent)
+  for (const date of dates) {
+    const kpi = userKPIs[date];
+    if ((kpi.offers || 0) >= goal) {
+      currentStreak++;
+    } else {
+      break;
+    }
+  }
+  
+  // Calculate best streak ever
+  const sortedDates = Object.keys(userKPIs).sort();
+  for (const date of sortedDates) {
+    const kpi = userKPIs[date];
+    if ((kpi.offers || 0) >= goal) {
+      tempStreak++;
+      bestStreak = Math.max(bestStreak, tempStreak);
+    } else {
+      tempStreak = 0;
+    }
+  }
+  
+  return { current: currentStreak, best: bestStreak };
+};
+
+// Streak Display Component
+const StreakBadge = ({ current, best }) => {
+  if (current === 0 && best === 0) return null;
+  
+  const flames = current >= 7 ? '🔥🔥🔥' : current >= 3 ? '🔥🔥' : current >= 1 ? '🔥' : '';
+  
+  return (
+    <div className="flex items-center gap-3 bg-gradient-to-r from-orange-500/20 to-red-500/20 rounded-xl px-4 py-2 border border-orange-500/30">
+      <div className="text-center">
+        <div className="flex items-center gap-1">
+          <span className="text-2xl font-black text-orange-400">{current}</span>
+          <span className="text-lg">{flames}</span>
+        </div>
+        <p className="text-orange-300/70 text-[10px] uppercase tracking-wide">Day Streak</p>
+      </div>
+      {best > 0 && (
+        <div className="text-center border-l border-orange-500/30 pl-3">
+          <div className="text-lg font-bold text-slate-400">{best}</div>
+          <p className="text-slate-500 text-[10px] uppercase tracking-wide">Best</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Circular Progress Component
 const CircularProgress = ({ percentage, size = 140, strokeWidth = 10 }) => {
   const radius = (size - strokeWidth) / 2;
@@ -1120,6 +1217,31 @@ export default function MomentumApp() {
   const monthlyStats = getStats(currentUser?.id, 'month');
   const displayName = currentUser?.display_name || currentUser?.name;
   const motivation = getMotivation();
+  const streak = calculateStreak(teamKPIs[currentUser?.id], goals.daily_offers);
+  
+  // Get last 7 days data for sparklines
+  const getLast7DaysData = (userId, field) => {
+    const userKPIs = teamKPIs[userId] || {};
+    const data = [];
+    const todayStr = getTodayInOrgTimezone();
+    const [year, month, day] = todayStr.split('-').map(Number);
+    
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(year, month - 1, day - i);
+      const dateStr = formatDateString(d);
+      const kpi = userKPIs[dateStr] || {};
+      if (field === 'texts') {
+        data.push((kpi.new_agents || 0) + (kpi.follow_ups || 0));
+      } else {
+        data.push(kpi[field] || 0);
+      }
+    }
+    return data;
+  };
+  
+  const myOffersTrend = getLast7DaysData(currentUser?.id, 'offers');
+  const myCallsTrend = getLast7DaysData(currentUser?.id, 'phone_calls');
+  const myTextsTrend = getLast7DaysData(currentUser?.id, 'texts');
 
   const pct = (c, g) => Math.min((c / g) * 100, 100);
   const pColor = (c, g) => pct(c, g) >= 100 ? 'bg-green-500' : pct(c, g) >= 50 ? 'bg-yellow-500' : 'bg-red-500';
@@ -1336,15 +1458,24 @@ export default function MomentumApp() {
                   <p className="text-3xl font-black text-white">{currentTime.toLocaleTimeString('en-US', { timeZone: ORG_TIMEZONE, hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
               </div>
+              {/* Mobile Streak */}
+              {(streak.current > 0 || streak.best > 0) && (
+                <div className="mt-3 pt-3 border-t border-slate-700/50">
+                  <StreakBadge current={streak.current} best={streak.best} />
+                </div>
+              )}
             </div>
 
-            {/* Desktop: Profile Card (unchanged) */}
+            {/* Desktop: Profile Card with Streak */}
             <div className="hidden md:flex bg-slate-800 rounded-xl p-4 border border-slate-700 items-center gap-4">
               <button onClick={openProfileModal} className="hover:opacity-80 transition"><UserAvatar user={currentUser} size="lg" /></button>
               <div className="flex-1 text-left">
                 <p className="text-white font-bold text-xl">{displayName}</p>
                 <p className="text-slate-400 text-sm">Your daily KPIs</p>
               </div>
+              {(streak.current > 0 || streak.best > 0) && (
+                <StreakBadge current={streak.current} best={streak.best} />
+              )}
               <button onClick={openProfileModal} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium">✏️ Edit Profile</button>
             </div>
 
@@ -1435,6 +1566,39 @@ export default function MomentumApp() {
               </div>
             </div>
 
+            {/* 7-Day Trends */}
+            <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700">
+              <h3 className="text-white font-bold mb-3 flex items-center gap-2">
+                <span>📈</span> Your 7-Day Trends
+              </h3>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-slate-700/50 rounded-xl p-3 text-center">
+                  <p className="text-slate-400 text-xs mb-1">Offers</p>
+                  <div className="flex justify-center mb-1">
+                    <Sparkline data={myOffersTrend} color="#6366f1" width={80} height={30} />
+                  </div>
+                  <p className="text-white font-bold">{myOffersTrend.reduce((a, b) => a + b, 0)}</p>
+                  <p className="text-slate-500 text-[10px]">this week</p>
+                </div>
+                <div className="bg-slate-700/50 rounded-xl p-3 text-center">
+                  <p className="text-slate-400 text-xs mb-1">Calls</p>
+                  <div className="flex justify-center mb-1">
+                    <Sparkline data={myCallsTrend} color="#22c55e" width={80} height={30} />
+                  </div>
+                  <p className="text-white font-bold">{myCallsTrend.reduce((a, b) => a + b, 0)}</p>
+                  <p className="text-slate-500 text-[10px]">this week</p>
+                </div>
+                <div className="bg-slate-700/50 rounded-xl p-3 text-center">
+                  <p className="text-slate-400 text-xs mb-1">Texts</p>
+                  <div className="flex justify-center mb-1">
+                    <Sparkline data={myTextsTrend} color="#3b82f6" width={80} height={30} />
+                  </div>
+                  <p className="text-white font-bold">{myTextsTrend.reduce((a, b) => a + b, 0)}</p>
+                  <p className="text-slate-500 text-[10px]">this week</p>
+                </div>
+              </div>
+            </div>
+
             {/* Quick Notes Widget */}
             <QuickNotesWidget 
               notes={userNotes} 
@@ -1456,17 +1620,31 @@ export default function MomentumApp() {
                   {['week', 'month'].map(p => <button key={p} onClick={() => setLeaderboardPeriod(p)} className={`px-3 sm:px-4 py-1 sm:py-2 rounded-lg text-sm font-semibold ${leaderboardPeriod === p ? 'bg-yellow-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{p === 'week' ? 'Week' : 'Month'}</button>)}
                 </div>
               </div>
-              {getLeaderboard().map((e, i) => (
-                <div key={e.user.id} className="bg-slate-700 rounded-lg p-3 sm:p-4 mb-2 flex items-center gap-2 sm:gap-4">
-                  <span className="text-2xl sm:text-3xl">{['🥇', '🥈', '🥉', '🏅'][i] || '🏅'}</span>
-                  <UserAvatar user={e.user} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-bold text-sm sm:text-base truncate">{e.user.display_name || e.user.name}</p>
-                    <p className="text-slate-400 text-xs">Offers: {e.stats.offers} | Texts: {e.stats.texts} | Calls: {e.stats.calls}</p>
+              {getLeaderboard().map((e, i) => {
+                const memberOffersTrend = getLast7DaysData(e.user.id, 'offers');
+                const memberStreak = calculateStreak(teamKPIs[e.user.id], goals.daily_offers);
+                return (
+                  <div key={e.user.id} className="bg-slate-700 rounded-lg p-3 sm:p-4 mb-2">
+                    <div className="flex items-center gap-2 sm:gap-4">
+                      <span className="text-2xl sm:text-3xl">{['🥇', '🥈', '🥉', '🏅'][i] || '🏅'}</span>
+                      <UserAvatar user={e.user} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-white font-bold text-sm sm:text-base truncate">{e.user.display_name || e.user.name}</p>
+                          {memberStreak.current > 0 && (
+                            <span className="text-orange-400 text-xs font-medium">🔥{memberStreak.current}</span>
+                          )}
+                        </div>
+                        <p className="text-slate-400 text-xs">Offers: {e.stats.offers} | Texts: {e.stats.texts} | Calls: {e.stats.calls}</p>
+                      </div>
+                      <div className="hidden sm:block">
+                        <Sparkline data={memberOffersTrend} color="#eab308" width={60} height={24} />
+                      </div>
+                      <div className="text-xl sm:text-2xl font-bold text-yellow-400">{e.score}</div>
+                    </div>
                   </div>
-                  <div className="text-xl sm:text-2xl font-bold text-yellow-400">{e.score}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
