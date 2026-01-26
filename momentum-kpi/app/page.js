@@ -499,12 +499,12 @@ export default function MomentumApp() {
     if ((myKPI.offers || 0) >= goals.daily_offers) {
       return { emoji: '🔥', text: 'ON FIRE TODAY' };
     }
-    if (h < 9) return { emoji: '🌅', text: 'Rise & Grind' };
-    if (h < 12) return { emoji: '⚡', text: 'Peak Hours' };
-    if (h < 15) return { emoji: '🚀', text: 'Unstoppable' };
-    if (h < 18) return { emoji: '🎯', text: 'Finish Strong' };
-    if (h < 21) return { emoji: '💎', text: 'Closing Time' };
-    return { emoji: '🌙', text: 'Night Grind' };
+    if (h < 9) return { emoji: '🌅', text: 'RISE & GRIND' };
+    if (h < 12) return { emoji: '⚡', text: 'PEAK HOURS' };
+    if (h < 15) return { emoji: '🚀', text: 'UNSTOPPABLE' };
+    if (h < 18) return { emoji: '🎯', text: 'FINISH STRONG' };
+    if (h < 21) return { emoji: '💎', text: 'CLOSING TIME' };
+    return { emoji: '🌙', text: 'NIGHT GRIND' };
   };
 
   useEffect(() => {
@@ -868,17 +868,17 @@ export default function MomentumApp() {
         <div className="bg-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <span className="text-3xl">⚡</span>
+              <span className="text-4xl">⚡</span>
               <div>
-                <h1 className="text-xl font-bold text-white">{organization?.name || 'Momentum'}</h1>
-                <p className="text-slate-400 text-xs">{currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
+                <h1 className="text-2xl font-extrabold text-white tracking-tight">{organization?.name || 'Momentum'}</h1>
+                <p className="text-slate-400 text-sm">{currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
               </div>
             </div>
             <div className="text-center">
-              <div className="text-4xl font-bold text-white tracking-tight">{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
-              <div className="flex items-center justify-center gap-1 mt-1">
-                <span className="text-base">{motivation.emoji}</span>
-                <span className="text-green-400 text-xs font-semibold">{motivation.text}</span>
+              <div className="text-5xl font-black text-white tracking-tight">{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <span className="text-4xl">{motivation.emoji}</span>
+                <span className="text-2xl font-extrabold bg-gradient-to-r from-green-400 via-emerald-400 to-teal-400 bg-clip-text text-transparent">{motivation.text}</span>
               </div>
             </div>
             <div className="flex items-center gap-3">
