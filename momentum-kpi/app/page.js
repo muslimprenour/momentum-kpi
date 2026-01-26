@@ -60,6 +60,7 @@ const db = {
     create: (invite) => supabaseFetch('invites', { method: 'POST', body: [invite] }),
     use: (code, userId) => supabaseFetch(`invites?code=eq.${code}`, { method: 'PATCH', body: { used_by: userId, used_at: new Date().toISOString(), is_active: false } }),
     getByOrg: (orgId) => supabaseFetch(`invites?organization_id=eq.${orgId}&select=*`),
+    delete: (inviteId) => supabaseFetch(`invites?id=eq.${inviteId}`, { method: 'DELETE' }),
   },
   kpis: {
     getByOrg: (orgId, userIds) => supabaseFetch(`daily_kpis?user_id=in.(${userIds.join(',')})&select=*`),
@@ -486,6 +487,7 @@ export default function MomentumApp() {
   const [kpiGoals, setKpiGoals] = useState(DEFAULT_KPI_GOALS);
   const [kpiSaving, setKpiSaving] = useState(false);
   const [userNotes, setUserNotes] = useState([]);
+  const [customInviteCode, setCustomInviteCode] = useState('');
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -749,9 +751,27 @@ export default function MomentumApp() {
     setSuccessMessage('✅ Password reset email sent! Check your inbox.');
   };
 
-  const generateInvite = async () => {
-    const code = generateInviteCode();
+  const generateInvite = async (useCustom = false) => {
+    let code;
+    if (useCustom && customInviteCode.trim()) {
+      code = customInviteCode.trim().toUpperCase();
+      // Check if code already exists
+      const { data: existing } = await db.invites.getByCode(code);
+      if (existing?.length > 0) {
+        alert('This invite code already exists. Please choose a different one.');
+        return;
+      }
+    } else {
+      code = generateInviteCode();
+    }
     await db.invites.create({ code, organization_id: organization.id, created_by: currentUser.id });
+    setCustomInviteCode('');
+    loadTeamData();
+  };
+
+  const deleteInvite = async (inviteId, inviteCode) => {
+    if (!confirm(`Delete invite code "${inviteCode}"?`)) return;
+    await db.invites.delete(inviteId);
     loadTeamData();
   };
 
@@ -1199,18 +1219,33 @@ export default function MomentumApp() {
                 <button onClick={handleKpiGoalsSave} disabled={kpiSaving} className="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-50">{kpiSaving ? 'Saving...' : '💾 Save KPI Goals'}</button>
               </div>
               <div className="mb-6">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-white font-semibold">Invite Codes</h3>
-                  <button onClick={generateInvite} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ Generate Code</button>
+                <h3 className="text-white font-semibold mb-3">Invite Codes</h3>
+                <div className="bg-slate-700 rounded-lg p-4 mb-4">
+                  <label className="text-slate-400 text-sm mb-2 block">Create Custom Invite Code</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={customInviteCode} 
+                      onChange={e => setCustomInviteCode(e.target.value.toUpperCase())} 
+                      placeholder="e.g. TEAM2024 or WELCOME" 
+                      className="flex-1 bg-slate-600 text-white rounded-lg px-4 py-2 border border-slate-500 focus:border-green-500 focus:outline-none font-mono uppercase tracking-wider"
+                    />
+                    <button onClick={() => generateInvite(true)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold">Create</button>
+                  </div>
+                  <p className="text-slate-500 text-xs mt-2">Or <button onClick={() => generateInvite(false)} className="text-green-400 hover:text-green-300 underline">auto-generate a random code</button></p>
                 </div>
                 <div className="space-y-2">
+                  <p className="text-slate-400 text-sm">Active Codes:</p>
                   {invites.filter(i => i.is_active).map(inv => (
                     <div key={inv.id} className="bg-slate-700 rounded-lg p-3 flex justify-between items-center">
                       <code className="text-green-400 font-mono text-lg">{inv.code}</code>
-                      <span className="text-slate-400 text-xs">Active</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-slate-400 text-xs">Active</span>
+                        <button onClick={() => deleteInvite(inv.id, inv.code)} className="text-red-400 hover:text-red-300 text-sm">🗑️ Delete</button>
+                      </div>
                     </div>
                   ))}
-                  {invites.filter(i => i.is_active).length === 0 && <p className="text-slate-500 text-sm">No active invite codes. Generate one to invite team members.</p>}
+                  {invites.filter(i => i.is_active).length === 0 && <p className="text-slate-500 text-sm">No active invite codes yet.</p>}
                 </div>
               </div>
               <div>
