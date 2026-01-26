@@ -1195,7 +1195,7 @@ export default function MomentumApp() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 p-4">
+    <div className="min-h-screen bg-slate-900 p-2 sm:p-4">
       <div className="max-w-6xl mx-auto">
         {showProfileModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -1310,9 +1310,9 @@ export default function MomentumApp() {
                 <div className={`h-3 rounded-full ${pColor(myKPI.phone_calls || 0, goals.daily_calls)}`} style={{ width: `${pct(myKPI.phone_calls || 0, goals.daily_calls)}%` }}></div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded-lg">-1</button>
-                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 1)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg">+1</button>
-                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 5)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg">+5</button>
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) - 1)} className="flex-1 bg-slate-600 text-white py-3 rounded-lg text-base font-medium active:bg-slate-500">-1</button>
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 1)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg text-base font-medium active:bg-green-500">+1</button>
+                <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 5)} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg text-base font-medium active:bg-green-500">+5</button>
               </div>
             </div>
 
@@ -1329,9 +1329,9 @@ export default function MomentumApp() {
                   <div key={field} className="bg-slate-700 rounded-lg p-3">
                     <p className="text-slate-400 text-xs">{label}: {myKPI[field] || 0}/{goal}</p>
                     <div className="flex gap-2 mt-2">
-                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) - 10)} className="flex-1 bg-slate-600 text-white py-1 rounded text-sm">-10</button>
-                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) + 10)} className="flex-1 bg-green-600 text-white py-1 rounded text-sm">+10</button>
-                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) + 50)} className="flex-1 bg-green-700 text-white py-1 rounded text-sm">+50</button>
+                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) - 10)} className="flex-1 bg-slate-600 text-white py-2 rounded text-sm font-medium active:bg-slate-500">-10</button>
+                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) + 10)} className="flex-1 bg-green-600 text-white py-2 rounded text-sm font-medium active:bg-green-500">+10</button>
+                      <button onClick={() => updateKPI(field, (myKPI[field] || 0) + 50)} className="flex-1 bg-green-700 text-white py-2 rounded text-sm font-medium active:bg-green-600">+50</button>
                     </div>
                   </div>
                 ))}
@@ -1344,8 +1344,8 @@ export default function MomentumApp() {
                 <p className="text-xs text-slate-400 mb-1">Weekly Goal: {goals.weekly_contracts}</p>
                 <p className="text-3xl font-bold text-purple-400">{weeklyStats.contracts}/{goals.weekly_contracts}</p>
                 <div className="flex gap-2 mt-2">
-                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded-lg">-1</button>
-                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) + 1)} className="flex-1 bg-purple-600 text-white py-2 rounded-lg">+1</button>
+                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) - 1)} className="flex-1 bg-slate-600 text-white py-3 rounded-lg font-medium active:bg-slate-500">-1</button>
+                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) + 1)} className="flex-1 bg-purple-600 text-white py-3 rounded-lg font-medium active:bg-purple-500">+1</button>
                 </div>
               </div>
               <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
@@ -1353,8 +1353,8 @@ export default function MomentumApp() {
                 <p className="text-xs text-slate-400 mb-1">Monthly Goal: {goals.monthly_closed}</p>
                 <p className="text-3xl font-bold text-yellow-400">{monthlyStats.closed}/{goals.monthly_closed}</p>
                 <div className="flex gap-2 mt-2">
-                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) - 1)} className="flex-1 bg-slate-600 text-white py-2 rounded-lg">-1</button>
-                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) + 1)} className="flex-1 bg-yellow-600 text-white py-2 rounded-lg">+1</button>
+                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) - 1)} className="flex-1 bg-slate-600 text-white py-3 rounded-lg font-medium active:bg-slate-500">-1</button>
+                  <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) + 1)} className="flex-1 bg-yellow-600 text-white py-3 rounded-lg font-medium active:bg-yellow-500">+1</button>
                 </div>
               </div>
             </div>
