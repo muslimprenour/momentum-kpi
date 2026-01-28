@@ -157,6 +157,12 @@ const db = {
     getByOrg: (orgId) => supabaseFetch(`approved_names?organization_id=eq.${orgId}&select=*&order=name.asc`),
     create: (name, orgId) => supabaseFetch('approved_names', { method: 'POST', body: [{ name, organization_id: orgId }] }),
     delete: (id) => supabaseFetch(`approved_names?id=eq.${id}`, { method: 'DELETE' }),
+  },
+  vipAgents: {
+    getByUser: (userId) => supabaseFetch(`vip_agents?user_id=eq.${userId}&select=*&order=created_at.desc`),
+    create: (agent) => supabaseFetch('vip_agents', { method: 'POST', body: [agent] }),
+    update: (agentId, updates) => supabaseFetch(`vip_agents?id=eq.${agentId}`, { method: 'PATCH', body: updates }),
+    delete: (agentId) => supabaseFetch(`vip_agents?id=eq.${agentId}`, { method: 'DELETE' }),
   }
 };
 
@@ -680,6 +686,246 @@ const NotesApp = ({ userId, notes, setNotes }) => {
   );
 };
 
+// VIP Agents Section for Personal Tab
+const VIPAgentsSection = ({ userId, vipAgents, setVipAgents }) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({ agent_name: '', phone: '', email: '', deal_closed: '', review_given: false, gift_sent: false });
+
+  const resetForm = () => {
+    setForm({ agent_name: '', phone: '', email: '', deal_closed: '', review_given: false, gift_sent: false });
+    setIsAdding(false);
+    setEditingId(null);
+  };
+
+  const handleSave = async () => {
+    if (!form.agent_name.trim()) return;
+    
+    if (editingId) {
+      // Update existing
+      const updates = {
+        agent_name: form.agent_name,
+        phone: form.phone,
+        email: form.email,
+        deal_closed: form.deal_closed,
+        review_given: form.review_given,
+        gift_sent: form.gift_sent,
+        updated_at: new Date().toISOString()
+      };
+      await db.vipAgents.update(editingId, updates);
+      setVipAgents(prev => prev.map(a => a.id === editingId ? { ...a, ...updates } : a));
+    } else {
+      // Create new
+      const newAgent = {
+        user_id: userId,
+        agent_name: form.agent_name,
+        phone: form.phone,
+        email: form.email,
+        deal_closed: form.deal_closed,
+        review_given: form.review_given,
+        gift_sent: form.gift_sent,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      const { data } = await db.vipAgents.create(newAgent);
+      if (data?.[0]) {
+        setVipAgents(prev => [data[0], ...prev]);
+      }
+    }
+    resetForm();
+  };
+
+  const handleEdit = (agent) => {
+    setForm({
+      agent_name: agent.agent_name || '',
+      phone: agent.phone || '',
+      email: agent.email || '',
+      deal_closed: agent.deal_closed || '',
+      review_given: agent.review_given || false,
+      gift_sent: agent.gift_sent || false
+    });
+    setEditingId(agent.id);
+    setIsAdding(true);
+  };
+
+  const handleDelete = async (agentId) => {
+    if (!confirm('Delete this VIP agent?')) return;
+    await db.vipAgents.delete(agentId);
+    setVipAgents(prev => prev.filter(a => a.id !== agentId));
+  };
+
+  const toggleField = async (agent, field) => {
+    const newValue = !agent[field];
+    await db.vipAgents.update(agent.id, { [field]: newValue, updated_at: new Date().toISOString() });
+    setVipAgents(prev => prev.map(a => a.id === agent.id ? { ...a, [field]: newValue } : a));
+  };
+
+  return (
+    <div className="bg-slate-800 rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-white font-bold flex items-center gap-2">
+          <span>⭐</span> VIP Agents
+        </h3>
+        {!isAdding && (
+          <button 
+            onClick={() => setIsAdding(true)} 
+            className="bg-amber-500 hover:bg-amber-400 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+          >
+            <span>+</span> Add VIP
+          </button>
+        )}
+      </div>
+
+      {/* Add/Edit Form */}
+      {isAdding && (
+        <div className="bg-slate-700/50 rounded-xl p-4 mb-4 border border-slate-600/50">
+          <h4 className="text-white font-medium mb-3">{editingId ? 'Edit VIP Agent' : 'Add VIP Agent'}</h4>
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={form.agent_name}
+              onChange={(e) => setForm(prev => ({ ...prev, agent_name: e.target.value }))}
+              placeholder="Agent Name *"
+              className="w-full bg-slate-600 text-white rounded-lg px-3 py-2.5 text-sm border border-slate-500 focus:border-amber-500 focus:outline-none"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="tel"
+                value={form.phone}
+                onChange={(e) => setForm(prev => ({ ...prev, phone: e.target.value }))}
+                placeholder="Phone"
+                className="bg-slate-600 text-white rounded-lg px-3 py-2.5 text-sm border border-slate-500 focus:border-amber-500 focus:outline-none"
+              />
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))}
+                placeholder="Email"
+                className="bg-slate-600 text-white rounded-lg px-3 py-2.5 text-sm border border-slate-500 focus:border-amber-500 focus:outline-none"
+              />
+            </div>
+            <input
+              type="text"
+              value={form.deal_closed}
+              onChange={(e) => setForm(prev => ({ ...prev, deal_closed: e.target.value }))}
+              placeholder="Deal Closed (e.g., 123 Main St - $50k)"
+              className="w-full bg-slate-600 text-white rounded-lg px-3 py-2.5 text-sm border border-slate-500 focus:border-amber-500 focus:outline-none"
+            />
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.review_given}
+                  onChange={(e) => setForm(prev => ({ ...prev, review_given: e.target.checked }))}
+                  className="w-5 h-5 rounded bg-slate-600 border-slate-500 text-amber-500 focus:ring-amber-500"
+                />
+                <span className="text-slate-300 text-sm">Review Given? ⭐</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.gift_sent}
+                  onChange={(e) => setForm(prev => ({ ...prev, gift_sent: e.target.checked }))}
+                  className="w-5 h-5 rounded bg-slate-600 border-slate-500 text-amber-500 focus:ring-amber-500"
+                />
+                <span className="text-slate-300 text-sm">Gift Sent? 🎁</span>
+              </label>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button 
+                onClick={resetForm} 
+                className="flex-1 bg-slate-600 hover:bg-slate-500 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSave} 
+                className="flex-1 bg-amber-500 hover:bg-amber-400 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
+              >
+                {editingId ? 'Update' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIP Agents List */}
+      <div className="space-y-3">
+        {vipAgents.length === 0 && !isAdding ? (
+          <div className="text-center py-6 text-slate-500">
+            <span className="text-3xl block mb-2">⭐</span>
+            <p className="text-sm">No VIP agents yet</p>
+            <p className="text-xs mt-1">Add agents who helped close deals!</p>
+          </div>
+        ) : (
+          vipAgents.map(agent => (
+            <div key={agent.id} className="bg-slate-700/50 rounded-xl p-3 border border-slate-600/30">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-white font-semibold truncate">{agent.agent_name}</h4>
+                  {agent.deal_closed && (
+                    <p className="text-amber-400 text-xs mt-0.5 truncate">🏠 {agent.deal_closed}</p>
+                  )}
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {agent.phone && (
+                      <a href={`tel:${agent.phone}`} className="text-slate-400 text-xs hover:text-blue-400 transition-colors">
+                        📞 {agent.phone}
+                      </a>
+                    )}
+                    {agent.email && (
+                      <a href={`mailto:${agent.email}`} className="text-slate-400 text-xs hover:text-blue-400 transition-colors truncate">
+                        ✉️ {agent.email}
+                      </a>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={() => handleEdit(agent)} 
+                    className="p-1.5 text-slate-400 hover:text-white transition-colors"
+                  >
+                    ✏️
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(agent.id)} 
+                    className="p-1.5 text-slate-400 hover:text-red-400 transition-colors"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </div>
+              
+              {/* Checkboxes */}
+              <div className="flex gap-4 mt-3 pt-3 border-t border-slate-600/30">
+                <button 
+                  onClick={() => toggleField(agent, 'review_given')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    agent.review_given 
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                      : 'bg-slate-600/50 text-slate-400 border border-slate-500/30 hover:border-slate-400'
+                  }`}
+                >
+                  {agent.review_given ? '✅' : '⬜'} Review Given
+                </button>
+                <button 
+                  onClick={() => toggleField(agent, 'gift_sent')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    agent.gift_sent 
+                      ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' 
+                      : 'bg-slate-600/50 text-slate-400 border border-slate-500/30 hover:border-slate-400'
+                  }`}
+                >
+                  {agent.gift_sent ? '🎁' : '⬜'} Gift Sent
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
 // Quick Notes Widget for Personal Tab
 const QuickNotesWidget = ({ notes, setNotes, userId, onOpenFullNotes }) => {
   const [quickNote, setQuickNote] = useState('');
@@ -783,6 +1029,7 @@ export default function MomentumApp() {
   const [kpiGoals, setKpiGoals] = useState(DEFAULT_KPI_GOALS);
   const [kpiSaving, setKpiSaving] = useState(false);
   const [userNotes, setUserNotes] = useState([]);
+  const [vipAgents, setVipAgents] = useState([]);
   const [customInviteCode, setCustomInviteCode] = useState('');
   const [approvedNames, setApprovedNames] = useState([]);
   const [newApprovedName, setNewApprovedName] = useState('');
@@ -823,6 +1070,7 @@ export default function MomentumApp() {
     if (currentUser && organization) {
       loadTeamData();
       loadUserNotes();
+      loadVipAgents();
       if (organization.kpi_goals) setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
     }
   }, [currentUser, organization]);
@@ -836,6 +1084,12 @@ export default function MomentumApp() {
     if (!currentUser) return;
     const { data } = await db.notes.getByUser(currentUser.id);
     if (data) setUserNotes(data);
+  };
+
+  const loadVipAgents = async () => {
+    if (!currentUser) return;
+    const { data } = await db.vipAgents.getByUser(currentUser.id);
+    if (data) setVipAgents(data);
   };
 
   const checkSession = async () => {
@@ -1721,6 +1975,13 @@ export default function MomentumApp() {
               setNotes={setUserNotes} 
               userId={currentUser?.id}
               onOpenFullNotes={() => setCurrentTab('notes')}
+            />
+
+            {/* VIP Agents Section */}
+            <VIPAgentsSection 
+              userId={currentUser?.id}
+              vipAgents={vipAgents}
+              setVipAgents={setVipAgents}
             />
           </div>
         )}
