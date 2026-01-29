@@ -163,6 +163,15 @@ const db = {
     create: (agent) => supabaseFetch('vip_agents', { method: 'POST', body: [agent] }),
     update: (agentId, updates) => supabaseFetch(`vip_agents?id=eq.${agentId}`, { method: 'PATCH', body: updates }),
     delete: (agentId) => supabaseFetch(`vip_agents?id=eq.${agentId}`, { method: 'DELETE' }),
+  },
+  deals: {
+    getByOrg: (orgId) => supabaseFetch(`deals_closed?organization_id=eq.${orgId}&select=*&order=closed_date.desc`),
+    getByOrgAndYear: (orgId, year) => supabaseFetch(`deals_closed?organization_id=eq.${orgId}&year=eq.${year}&select=*&order=closed_date.desc`),
+    getByUser: (userId) => supabaseFetch(`deals_closed?or=(user_id.eq.${userId},split_with_user_id.eq.${userId})&select=*&order=closed_date.desc`),
+    getByUserAndYear: (userId, year) => supabaseFetch(`deals_closed?or=(user_id.eq.${userId},split_with_user_id.eq.${userId})&year=eq.${year}&select=*&order=closed_date.desc`),
+    create: (deal) => supabaseFetch('deals_closed', { method: 'POST', body: [deal] }),
+    update: (dealId, updates) => supabaseFetch(`deals_closed?id=eq.${dealId}`, { method: 'PATCH', body: updates }),
+    delete: (dealId) => supabaseFetch(`deals_closed?id=eq.${dealId}`, { method: 'DELETE' }),
   }
 };
 
@@ -1046,6 +1055,21 @@ export default function MomentumApp() {
   const [approvedNames, setApprovedNames] = useState([]);
   const [newApprovedName, setNewApprovedName] = useState('');
   const [showConfetti, setShowConfetti] = useState(false);
+  
+  // Deals tracking state
+  const [deals, setDeals] = useState([]);
+  const [dealsYear, setDealsYear] = useState(new Date().getFullYear());
+  const [showAddDeal, setShowAddDeal] = useState(false);
+  const [editingDeal, setEditingDeal] = useState(null);
+  const [dealForm, setDealForm] = useState({
+    property_address: '',
+    uc_price: '',
+    sold_price: '',
+    split_with_user_id: '',
+    split_percentage: '50',
+    closed_date: getTodayInOrgTimezone(),
+    notes: ''
+  });
   const [lastOfferCount, setLastOfferCount] = useState(0);
 
   const today = getTodayInOrgTimezone();
@@ -1083,6 +1107,7 @@ export default function MomentumApp() {
       loadTeamData();
       loadUserNotes();
       loadVipAgents();
+      loadDeals();
       if (organization.kpi_goals) setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
     }
   }, [currentUser, organization]);
@@ -1105,6 +1130,25 @@ export default function MomentumApp() {
       if (data && !error) setVipAgents(data);
     } catch (e) {
       console.log('VIP agents table not ready yet');
+    }
+  };
+
+  const loadDeals = async (year = dealsYear) => {
+    if (!currentUser || !organization) return;
+    try {
+      let data;
+      if (currentUser.role === 'owner') {
+        // Owner sees all deals for the org
+        const result = await db.deals.getByOrgAndYear(organization.id, year);
+        data = result.data;
+      } else {
+        // Team member sees only their deals (as primary or split partner)
+        const result = await db.deals.getByUserAndYear(currentUser.id, year);
+        data = result.data;
+      }
+      if (data) setDeals(data);
+    } catch (e) {
+      console.log('Deals table not ready yet');
     }
   };
 
@@ -1778,9 +1822,9 @@ export default function MomentumApp() {
           
           {/* Desktop Tabs */}
           <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-            {['personal', 'team', 'analytics', 'history', 'notes'].map(tab => (
+            {['personal', 'team', 'analytics', 'deals', 'history', 'notes'].map(tab => (
               <button key={tab} onClick={() => setCurrentTab(tab)} className={`px-3 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm ${currentTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
-                {tab === 'notes' ? '📝 Notes' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'notes' ? '📝 Notes' : tab === 'deals' ? '💰 Deals' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
             {currentUser?.role === 'owner' && (
@@ -1796,6 +1840,7 @@ export default function MomentumApp() {
               { id: 'personal', icon: '🏠', label: 'Home' },
               { id: 'team', icon: '🏆', label: 'Team' },
               { id: 'analytics', icon: '📊', label: 'Stats' },
+              { id: 'deals', icon: '💰', label: 'Deals' },
               { id: 'notes', icon: '📝', label: 'Notes' },
               { id: 'more', icon: '•••', label: 'More' }
             ].map(tab => (
@@ -1864,6 +1909,49 @@ export default function MomentumApp() {
               )}
               <button onClick={openProfileModal} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium">✏️ Edit Profile</button>
             </div>
+
+            {/* YTD Revenue Widget */}
+            {deals.length > 0 && (() => {
+              const currentYear = new Date().getFullYear();
+              const ytdDeals = deals.filter(d => {
+                const dealYear = new Date(d.closed_date).getFullYear();
+                return dealYear === currentYear;
+              });
+              
+              const ytdRevenue = ytdDeals.reduce((sum, d) => sum + parseFloat(d.revenue || 0), 0);
+              const ytdNetTake = ytdDeals.reduce((sum, d) => {
+                const rev = parseFloat(d.revenue || 0);
+                if (d.split_with_user_id) {
+                  const splitPct = parseFloat(d.split_percentage || 50);
+                  if (d.user_id === currentUser?.id) {
+                    return sum + (rev * splitPct / 100);
+                  } else if (d.split_with_user_id === currentUser?.id) {
+                    return sum + (rev * (100 - splitPct) / 100);
+                  }
+                }
+                return sum + rev;
+              }, 0);
+
+              return (
+                <div 
+                  onClick={() => setCurrentTab('deals')}
+                  className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 rounded-2xl md:rounded-xl p-4 border border-green-700/30 cursor-pointer hover:border-green-600/50 transition"
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-green-400/70 text-xs uppercase tracking-wide">YTD Revenue {currentYear}</p>
+                      {currentUser?.role === 'owner' ? (
+                        <p className="text-3xl font-black text-green-400">${ytdRevenue.toLocaleString()}</p>
+                      ) : (
+                        <p className="text-3xl font-black text-green-400">${ytdNetTake.toLocaleString()}</p>
+                      )}
+                      <p className="text-green-400/50 text-sm">{ytdDeals.length} deals closed</p>
+                    </div>
+                    <div className="text-4xl">💰</div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <OffersCard offers={myKPI.offers || 0} goal={goals.daily_offers} isGoogleSync={organization?.google_sheet_sync} onUpdate={(value) => updateKPI('offers', value)} />
 
@@ -2087,6 +2175,329 @@ export default function MomentumApp() {
               <button onClick={exportCSV} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 sm:py-3 rounded-lg text-sm sm:text-base">📥 Export</button>
               <button onClick={copySummary} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 sm:py-3 rounded-lg text-sm sm:text-base">📋 Copy</button>
             </div>
+          </div>
+        )}
+
+        {currentTab === 'deals' && (
+          <div className="space-y-4">
+            {/* Year selector and Add button */}
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => { setDealsYear(y => y - 1); loadDeals(dealsYear - 1); }}
+                  className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg"
+                >
+                  ◀
+                </button>
+                <span className="text-xl font-bold text-white px-3">{dealsYear}</span>
+                <button 
+                  onClick={() => { setDealsYear(y => y + 1); loadDeals(dealsYear + 1); }}
+                  className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg"
+                  disabled={dealsYear >= new Date().getFullYear()}
+                >
+                  ▶
+                </button>
+              </div>
+              {currentUser?.role === 'owner' && (
+                <button 
+                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', closed_date: getTodayInOrgTimezone(), notes: '' }); }}
+                  className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
+                >
+                  + Add Deal
+                </button>
+              )}
+            </div>
+
+            {/* Summary Cards */}
+            {(() => {
+              const userDeals = currentUser?.role === 'owner' 
+                ? deals 
+                : deals.filter(d => d.user_id === currentUser?.id || d.split_with_user_id === currentUser?.id);
+              
+              const totalRevenue = userDeals.reduce((sum, d) => sum + parseFloat(d.revenue || 0), 0);
+              const dealCount = userDeals.length;
+              
+              // Calculate user's net take
+              const netTake = userDeals.reduce((sum, d) => {
+                const rev = parseFloat(d.revenue || 0);
+                if (d.split_with_user_id) {
+                  const splitPct = parseFloat(d.split_percentage || 50);
+                  if (d.user_id === currentUser?.id) {
+                    return sum + (rev * splitPct / 100);
+                  } else {
+                    return sum + (rev * (100 - splitPct) / 100);
+                  }
+                }
+                return sum + rev;
+              }, 0);
+
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                    <p className="text-slate-400 text-sm">Deals Closed</p>
+                    <p className="text-3xl font-bold text-white">{dealCount}</p>
+                  </div>
+                  {currentUser?.role === 'owner' ? (
+                    <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                      <p className="text-slate-400 text-sm">Total Revenue</p>
+                      <p className="text-3xl font-bold text-green-400">${totalRevenue.toLocaleString()}</p>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                      <p className="text-slate-400 text-sm">Your Net Take</p>
+                      <p className="text-3xl font-bold text-green-400">${netTake.toLocaleString()}</p>
+                    </div>
+                  )}
+                  {currentUser?.role === 'owner' && (
+                    <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                      <p className="text-slate-400 text-sm">Avg Per Deal</p>
+                      <p className="text-3xl font-bold text-blue-400">${dealCount > 0 ? Math.round(totalRevenue / dealCount).toLocaleString() : 0}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Deals List */}
+            <div className="space-y-3">
+              {deals.length === 0 ? (
+                <div className="bg-slate-800 rounded-xl p-8 text-center border border-slate-700">
+                  <p className="text-slate-400">No deals closed in {dealsYear}</p>
+                  {currentUser?.role === 'owner' && (
+                    <button 
+                      onClick={() => setShowAddDeal(true)}
+                      className="mt-4 text-blue-400 hover:text-blue-300"
+                    >
+                      Add your first deal →
+                    </button>
+                  )}
+                </div>
+              ) : (
+                deals.map(deal => {
+                  const primaryUser = teamMembers.find(m => m.id === deal.user_id);
+                  const splitUser = deal.split_with_user_id ? teamMembers.find(m => m.id === deal.split_with_user_id) : null;
+                  const revenue = parseFloat(deal.revenue || 0);
+                  const splitPct = parseFloat(deal.split_percentage || 50);
+                  
+                  // Calculate net for current user
+                  let userNet = revenue;
+                  if (deal.split_with_user_id) {
+                    if (deal.user_id === currentUser?.id) {
+                      userNet = revenue * splitPct / 100;
+                    } else if (deal.split_with_user_id === currentUser?.id) {
+                      userNet = revenue * (100 - splitPct) / 100;
+                    }
+                  }
+
+                  return (
+                    <div key={deal.id} className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <p className="text-white font-semibold text-lg">{deal.property_address}</p>
+                          <p className="text-slate-400 text-sm">
+                            Closed: {new Date(deal.closed_date).toLocaleDateString()}
+                          </p>
+                          <div className="flex gap-4 mt-2 text-sm">
+                            <span className="text-slate-400">UC: <span className="text-white">${parseFloat(deal.uc_price).toLocaleString()}</span></span>
+                            <span className="text-slate-400">Sold: <span className="text-white">${parseFloat(deal.sold_price).toLocaleString()}</span></span>
+                          </div>
+                          {splitUser && (
+                            <p className="text-slate-400 text-sm mt-1">
+                              Split with {splitUser.display_name || splitUser.name} ({splitPct}/{100-splitPct})
+                            </p>
+                          )}
+                          {primaryUser && currentUser?.role === 'owner' && (
+                            <p className="text-slate-500 text-xs mt-1">
+                              Primary: {primaryUser.display_name || primaryUser.name}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-bold text-green-400">${revenue.toLocaleString()}</p>
+                          {deal.split_with_user_id && currentUser?.role !== 'owner' && (
+                            <p className="text-sm text-slate-400">Your take: <span className="text-green-300">${userNet.toLocaleString()}</span></p>
+                          )}
+                          {currentUser?.role === 'owner' && (
+                            <div className="flex gap-2 mt-2 justify-end">
+                              <button 
+                                onClick={() => { 
+                                  setEditingDeal(deal); 
+                                  setDealForm({
+                                    property_address: deal.property_address,
+                                    uc_price: deal.uc_price,
+                                    sold_price: deal.sold_price,
+                                    split_with_user_id: deal.split_with_user_id || '',
+                                    split_percentage: deal.split_percentage || '50',
+                                    closed_date: deal.closed_date,
+                                    notes: deal.notes || ''
+                                  });
+                                  setShowAddDeal(true);
+                                }}
+                                className="text-blue-400 hover:text-blue-300 text-sm"
+                              >
+                                Edit
+                              </button>
+                              <button 
+                                onClick={async () => {
+                                  if (confirm('Delete this deal?')) {
+                                    await db.deals.delete(deal.id);
+                                    loadDeals();
+                                  }
+                                }}
+                                className="text-red-400 hover:text-red-300 text-sm"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Add/Edit Deal Modal */}
+            {showAddDeal && (
+              <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-slate-700">
+                  <h3 className="text-xl font-bold text-white mb-4">{editingDeal ? 'Edit Deal' : 'Add New Deal'}</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-slate-400 text-sm">Property Address</label>
+                      <input 
+                        type="text"
+                        value={dealForm.property_address}
+                        onChange={e => setDealForm(f => ({ ...f, property_address: e.target.value }))}
+                        className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                        placeholder="123 Main St, City, State"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-slate-400 text-sm">UC Price ($)</label>
+                        <input 
+                          type="number"
+                          value={dealForm.uc_price}
+                          onChange={e => setDealForm(f => ({ ...f, uc_price: e.target.value }))}
+                          className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                          placeholder="100000"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-slate-400 text-sm">Sold Price ($)</label>
+                        <input 
+                          type="number"
+                          value={dealForm.sold_price}
+                          onChange={e => setDealForm(f => ({ ...f, sold_price: e.target.value }))}
+                          className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                          placeholder="120000"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-sm">Closed Date</label>
+                      <input 
+                        type="date"
+                        value={dealForm.closed_date}
+                        onChange={e => setDealForm(f => ({ ...f, closed_date: e.target.value }))}
+                        className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-sm">Primary Team Member</label>
+                      <select
+                        value={editingDeal ? editingDeal.user_id : currentUser?.id}
+                        onChange={e => setEditingDeal(d => d ? { ...d, user_id: e.target.value } : { user_id: e.target.value })}
+                        className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                      >
+                        {teamMembers.map(m => (
+                          <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-sm">Split With (optional)</label>
+                      <select
+                        value={dealForm.split_with_user_id}
+                        onChange={e => setDealForm(f => ({ ...f, split_with_user_id: e.target.value }))}
+                        className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                      >
+                        <option value="">No split</option>
+                        {teamMembers.filter(m => m.id !== (editingDeal?.user_id || currentUser?.id)).map(m => (
+                          <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {dealForm.split_with_user_id && (
+                      <div>
+                        <label className="text-slate-400 text-sm">Split % (Primary/Partner)</label>
+                        <select
+                          value={dealForm.split_percentage}
+                          onChange={e => setDealForm(f => ({ ...f, split_percentage: e.target.value }))}
+                          className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                        >
+                          <option value="50">50/50</option>
+                          <option value="60">60/40</option>
+                          <option value="70">70/30</option>
+                          <option value="75">75/25</option>
+                          <option value="80">80/20</option>
+                        </select>
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-slate-400 text-sm">Notes</label>
+                      <textarea 
+                        value={dealForm.notes}
+                        onChange={e => setDealForm(f => ({ ...f, notes: e.target.value }))}
+                        className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                        rows={2}
+                        placeholder="Any notes about this deal..."
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-6">
+                    <button 
+                      onClick={() => { setShowAddDeal(false); setEditingDeal(null); }}
+                      className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        if (!dealForm.property_address || !dealForm.uc_price || !dealForm.sold_price || !dealForm.closed_date) {
+                          alert('Please fill in all required fields');
+                          return;
+                        }
+                        const dealData = {
+                          organization_id: organization.id,
+                          user_id: editingDeal?.user_id || currentUser.id,
+                          property_address: dealForm.property_address,
+                          uc_price: parseFloat(dealForm.uc_price),
+                          sold_price: parseFloat(dealForm.sold_price),
+                          split_with_user_id: dealForm.split_with_user_id || null,
+                          split_percentage: dealForm.split_with_user_id ? parseFloat(dealForm.split_percentage) : null,
+                          closed_date: dealForm.closed_date,
+                          notes: dealForm.notes
+                        };
+                        if (editingDeal) {
+                          await db.deals.update(editingDeal.id, dealData);
+                        } else {
+                          await db.deals.create(dealData);
+                        }
+                        setShowAddDeal(false);
+                        setEditingDeal(null);
+                        loadDeals();
+                      }}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg"
+                    >
+                      {editingDeal ? 'Save Changes' : 'Add Deal'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
