@@ -1075,7 +1075,9 @@ export default function MomentumApp() {
     original_uc_price: '',
     deal_type: 'wholesale',
     sale_price: '',
-    commission_amount: ''
+    commission_amount: '',
+    list_back_secured: false,
+    list_back_commission_pct: ''
   });
   const [lastOfferCount, setLastOfferCount] = useState(0);
 
@@ -1960,8 +1962,8 @@ export default function MomentumApp() {
               );
             })()}
 
-            {/* Commission YTD Widget - Only for licensed users */}
-            {currentUser?.is_licensed && (() => {
+            {/* Traditional Commission YTD Widget */}
+            {(() => {
               const currentYear = new Date().getFullYear();
               const traditionalDeals = deals.filter(d => {
                 const dealYear = new Date(d.closed_date).getFullYear();
@@ -1970,6 +1972,9 @@ export default function MomentumApp() {
               
               const ytdCommission = traditionalDeals.reduce((sum, d) => sum + parseFloat(d.commission_amount || 0), 0);
 
+              // Show widget if there are traditional deals OR user is licensed
+              if (traditionalDeals.length === 0 && !currentUser?.is_licensed) return null;
+
               return (
                 <div 
                   onClick={() => setCurrentTab('deals')}
@@ -1977,7 +1982,7 @@ export default function MomentumApp() {
                 >
                   <div className="flex justify-between items-center">
                     <div>
-                      <p className="text-blue-400/70 text-xs uppercase tracking-wide">Commission YTD {currentYear}</p>
+                      <p className="text-blue-400/70 text-xs uppercase tracking-wide">Traditional Revenue YTD {currentYear}</p>
                       <p className="text-3xl font-black text-blue-400">${ytdCommission.toLocaleString()}</p>
                       <p className="text-blue-400/50 text-sm">{traditionalDeals.length} traditional deals</p>
                     </div>
@@ -2251,7 +2256,7 @@ export default function MomentumApp() {
               </div>
               {currentUser?.role === 'owner' && (
                 <button 
-                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '' }); }}
+                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '' }); }}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
                 >
                   + Add Deal
@@ -2419,7 +2424,9 @@ export default function MomentumApp() {
                                     original_uc_price: deal.original_uc_price || '',
                                     deal_type: deal.deal_type || 'wholesale',
                                     sale_price: deal.sale_price || '',
-                                    commission_amount: deal.commission_amount || ''
+                                    commission_amount: deal.commission_amount || '',
+                                    list_back_secured: deal.list_back_secured || false,
+                                    list_back_commission_pct: deal.list_back_commission_pct || ''
                                   });
                                   setShowAddDeal(true);
                                 }}
@@ -2689,6 +2696,28 @@ export default function MomentumApp() {
                             />
                           </div>
                         )}
+                        <div className="flex items-center gap-3 p-3 bg-amber-900/30 rounded-lg border border-amber-700/30">
+                          <input 
+                            type="checkbox"
+                            checked={dealForm.list_back_secured}
+                            onChange={e => setDealForm(f => ({ ...f, list_back_secured: e.target.checked }))}
+                            className="w-5 h-5 rounded"
+                          />
+                          <label className="text-amber-300 text-sm font-medium">🔙 List Back Secured</label>
+                        </div>
+                        {dealForm.list_back_secured && (
+                          <div>
+                            <label className="text-slate-400 text-sm">Commission % Secured</label>
+                            <input 
+                              type="number"
+                              step="0.1"
+                              value={dealForm.list_back_commission_pct}
+                              onChange={e => setDealForm(f => ({ ...f, list_back_commission_pct: e.target.value }))}
+                              className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                              placeholder="2.5"
+                            />
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -2733,6 +2762,8 @@ export default function MomentumApp() {
                           dealData.original_list_price = dealForm.deal_source === 'on_market' && dealForm.original_list_price ? parseFloat(dealForm.original_list_price) : null;
                           dealData.had_price_reduction = dealForm.had_price_reduction;
                           dealData.original_uc_price = dealForm.had_price_reduction && dealForm.original_uc_price ? parseFloat(dealForm.original_uc_price) : null;
+                          dealData.list_back_secured = dealForm.list_back_secured;
+                          dealData.list_back_commission_pct = dealForm.list_back_secured && dealForm.list_back_commission_pct ? parseFloat(dealForm.list_back_commission_pct) : null;
                           dealData.sale_price = null;
                           dealData.commission_amount = null;
                         } else {
@@ -2747,6 +2778,8 @@ export default function MomentumApp() {
                           dealData.original_list_price = null;
                           dealData.had_price_reduction = false;
                           dealData.original_uc_price = null;
+                          dealData.list_back_secured = false;
+                          dealData.list_back_commission_pct = null;
                         }
 
                         if (editingDeal) {
