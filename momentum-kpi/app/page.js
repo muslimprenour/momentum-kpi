@@ -1072,7 +1072,10 @@ export default function MomentumApp() {
     deal_source: 'on_market',
     original_list_price: '',
     had_price_reduction: false,
-    original_uc_price: ''
+    original_uc_price: '',
+    deal_type: 'wholesale',
+    sale_price: '',
+    commission_amount: ''
   });
   const [lastOfferCount, setLastOfferCount] = useState(0);
 
@@ -1503,7 +1506,7 @@ export default function MomentumApp() {
     setKpiSaving(false);
   };
 
-  const getMyKPI = () => teamKPIs[currentUser?.id]?.[today] || { offers: 0, new_agents: 0, follow_ups: 0, phone_calls: 0, deals_under_contract: 0, deals_closed: 0, notes: '' };
+  const getMyKPI = () => teamKPIs[currentUser?.id]?.[today] || { offers: 0, new_agents: 0, follow_ups: 0, phone_calls: 0, deals_under_contract: 0, deals_closed: 0, list_backs: 0, notes: '' };
 
   const updateKPI = async (field, value) => {
     const current = getMyKPI();
@@ -1521,7 +1524,7 @@ export default function MomentumApp() {
     }
     
     setTeamKPIs(prev => ({ ...prev, [currentUser.id]: { ...prev[currentUser.id], [today]: updated } }));
-    const { error } = await db.kpis.upsert({ user_id: currentUser.id, date: today, offers: updated.offers || 0, new_agents: updated.new_agents || 0, follow_ups: updated.follow_ups || 0, phone_calls: updated.phone_calls || 0, deals_under_contract: updated.deals_under_contract || 0, deals_closed: updated.deals_closed || 0, notes: updated.notes || '' });
+    const { error } = await db.kpis.upsert({ user_id: currentUser.id, date: today, offers: updated.offers || 0, new_agents: updated.new_agents || 0, follow_ups: updated.follow_ups || 0, phone_calls: updated.phone_calls || 0, deals_under_contract: updated.deals_under_contract || 0, deals_closed: updated.deals_closed || 0, list_backs: updated.list_backs || 0, notes: updated.notes || '' });
     if (error) console.error('KPI save failed:', error);
   };
 
@@ -1957,6 +1960,33 @@ export default function MomentumApp() {
               );
             })()}
 
+            {/* Commission YTD Widget - Only for licensed users */}
+            {currentUser?.is_licensed && (() => {
+              const currentYear = new Date().getFullYear();
+              const traditionalDeals = deals.filter(d => {
+                const dealYear = new Date(d.closed_date).getFullYear();
+                return dealYear === currentYear && d.deal_type === 'traditional';
+              });
+              
+              const ytdCommission = traditionalDeals.reduce((sum, d) => sum + parseFloat(d.commission_amount || 0), 0);
+
+              return (
+                <div 
+                  onClick={() => setCurrentTab('deals')}
+                  className="bg-gradient-to-r from-blue-900/30 to-indigo-900/30 rounded-2xl md:rounded-xl p-4 border border-blue-700/30 cursor-pointer hover:border-blue-600/50 transition"
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-blue-400/70 text-xs uppercase tracking-wide">Commission YTD {currentYear}</p>
+                      <p className="text-3xl font-black text-blue-400">${ytdCommission.toLocaleString()}</p>
+                      <p className="text-blue-400/50 text-sm">{traditionalDeals.length} traditional deals</p>
+                    </div>
+                    <div className="text-4xl">🏠</div>
+                  </div>
+                </div>
+              );
+            })()}
+
             <OffersCard offers={myKPI.offers || 0} goal={goals.daily_offers} isGoogleSync={organization?.google_sheet_sync} onUpdate={(value) => updateKPI('offers', value)} />
 
             {/* Phone Conversations Card */}
@@ -1977,6 +2007,23 @@ export default function MomentumApp() {
                 <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) - 1)} className="flex-1 bg-slate-700/80 hover:bg-slate-600 text-white py-3.5 md:py-3 rounded-xl md:rounded-lg text-base font-semibold active:scale-95 transition-all">−1</button>
                 <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 1)} className="flex-1 bg-green-600 hover:bg-green-500 text-white py-3.5 md:py-3 rounded-xl md:rounded-lg text-base font-semibold active:scale-95 transition-all">+1</button>
                 <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 5)} className="flex-1 bg-green-600 hover:bg-green-500 text-white py-3.5 md:py-3 rounded-xl md:rounded-lg text-base font-semibold active:scale-95 transition-all">+5</button>
+              </div>
+            </div>
+
+            {/* List Backs Secured Card */}
+            <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 md:p-4 border border-slate-700/50 md:border-slate-700">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <p className="text-slate-400 text-xs md:text-sm uppercase tracking-wide">List Backs Secured</p>
+                  <p className="text-4xl md:text-2xl font-black text-white mt-1">{myKPI.list_backs || 0}</p>
+                </div>
+                <div className="w-12 h-12 md:w-10 md:h-10 rounded-xl md:rounded-lg bg-amber-500/20 flex items-center justify-center">
+                  <span className="text-2xl md:text-xl">🔙</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => updateKPI('list_backs', (myKPI.list_backs || 0) - 1)} className="flex-1 bg-slate-700/80 hover:bg-slate-600 text-white py-3.5 md:py-3 rounded-xl md:rounded-lg text-base font-semibold active:scale-95 transition-all">−1</button>
+                <button onClick={() => updateKPI('list_backs', (myKPI.list_backs || 0) + 1)} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white py-3.5 md:py-3 rounded-xl md:rounded-lg text-base font-semibold active:scale-95 transition-all">+1</button>
               </div>
             </div>
 
@@ -2204,7 +2251,7 @@ export default function MomentumApp() {
               </div>
               {currentUser?.role === 'owner' && (
                 <button 
-                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '' }); }}
+                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '' }); }}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
                 >
                   + Add Deal
@@ -2280,12 +2327,14 @@ export default function MomentumApp() {
                 deals.map(deal => {
                   const primaryUser = teamMembers.find(m => m.id === deal.user_id);
                   const splitUser = deal.split_with_user_id ? teamMembers.find(m => m.id === deal.split_with_user_id) : null;
+                  const isTraditional = deal.deal_type === 'traditional';
                   const revenue = parseFloat(deal.revenue || 0);
+                  const commission = parseFloat(deal.commission_amount || 0);
                   const splitPct = parseFloat(deal.split_percentage || 50);
                   
-                  // Calculate net for current user
+                  // Calculate net for current user (only for wholesale deals)
                   let userNet = revenue;
-                  if (deal.split_with_user_id) {
+                  if (!isTraditional && deal.split_with_user_id) {
                     if (deal.user_id === currentUser?.id) {
                       userNet = revenue * splitPct / 100;
                     } else if (deal.split_with_user_id === currentUser?.id) {
@@ -2297,28 +2346,39 @@ export default function MomentumApp() {
                     <div key={deal.id} className="bg-slate-800 rounded-xl p-4 border border-slate-700">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <p className="text-white font-semibold text-lg">{deal.property_address}</p>
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-white font-semibold text-lg">{deal.property_address}</p>
+                            <span className={`text-xs px-2 py-0.5 rounded ${isTraditional ? 'bg-blue-600/30 text-blue-300' : 'bg-green-600/30 text-green-300'}`}>
+                              {isTraditional ? '🏠 Traditional' : '📦 Wholesale'}
+                            </span>
+                          </div>
                           <p className="text-slate-400 text-sm">
                             Closed: {new Date(deal.closed_date).toLocaleDateString()}
                           </p>
-                          <div className="flex gap-4 mt-2 text-sm">
-                            <span className="text-slate-400">UC: <span className="text-white">${parseFloat(deal.uc_price).toLocaleString()}</span></span>
-                            <span className="text-slate-400">Sold: <span className="text-white">${parseFloat(deal.sold_price).toLocaleString()}</span></span>
-                          </div>
-                          {splitUser && (
+                          {isTraditional ? (
+                            <div className="flex gap-4 mt-2 text-sm">
+                              <span className="text-slate-400">Sale: <span className="text-white">${parseFloat(deal.sale_price || 0).toLocaleString()}</span></span>
+                            </div>
+                          ) : (
+                            <div className="flex gap-4 mt-2 text-sm">
+                              <span className="text-slate-400">UC: <span className="text-white">${parseFloat(deal.uc_price).toLocaleString()}</span></span>
+                              <span className="text-slate-400">Sold: <span className="text-white">${parseFloat(deal.sold_price).toLocaleString()}</span></span>
+                            </div>
+                          )}
+                          {!isTraditional && splitUser && (
                             <p className="text-slate-400 text-sm mt-1">
                               Split with {splitUser.display_name || splitUser.name} ({splitPct}/{100-splitPct})
                             </p>
                           )}
-                          {deal.deal_source === 'off_market' && (
+                          {!isTraditional && deal.deal_source === 'off_market' && (
                             <span className="inline-block bg-purple-600/30 text-purple-300 text-xs px-2 py-0.5 rounded mt-1">Off Market</span>
                           )}
-                          {deal.deal_source === 'on_market' && deal.original_list_price && (
+                          {!isTraditional && deal.deal_source === 'on_market' && deal.original_list_price && (
                             <p className="text-slate-400 text-sm mt-1">
                               Listed: ${parseFloat(deal.original_list_price).toLocaleString()}
                             </p>
                           )}
-                          {deal.had_price_reduction && deal.original_uc_price && (
+                          {!isTraditional && deal.had_price_reduction && deal.original_uc_price && (
                             <p className="text-orange-400 text-sm mt-1">
                               📉 UC reduced: ${parseFloat(deal.original_uc_price).toLocaleString()} → ${parseFloat(deal.uc_price).toLocaleString()}
                             </p>
@@ -2330,9 +2390,15 @@ export default function MomentumApp() {
                           )}
                         </div>
                         <div className="text-right">
-                          <p className="text-2xl font-bold text-green-400">${revenue.toLocaleString()}</p>
-                          {deal.split_with_user_id && currentUser?.role !== 'owner' && (
-                            <p className="text-sm text-slate-400">Your take: <span className="text-green-300">${userNet.toLocaleString()}</span></p>
+                          {isTraditional ? (
+                            <p className="text-2xl font-bold text-blue-400">${commission.toLocaleString()}</p>
+                          ) : (
+                            <>
+                              <p className="text-2xl font-bold text-green-400">${revenue.toLocaleString()}</p>
+                              {deal.split_with_user_id && currentUser?.role !== 'owner' && (
+                                <p className="text-sm text-slate-400">Your take: <span className="text-green-300">${userNet.toLocaleString()}</span></p>
+                              )}
+                            </>
                           )}
                           {currentUser?.role === 'owner' && (
                             <div className="flex gap-2 mt-2 justify-end">
@@ -2341,8 +2407,8 @@ export default function MomentumApp() {
                                   setEditingDeal(deal); 
                                   setDealForm({
                                     property_address: deal.property_address,
-                                    uc_price: deal.uc_price,
-                                    sold_price: deal.sold_price,
+                                    uc_price: deal.uc_price || '',
+                                    sold_price: deal.sold_price || '',
                                     split_with_user_id: deal.split_with_user_id || '',
                                     split_percentage: deal.split_percentage || '50',
                                     closed_date: deal.closed_date,
@@ -2350,7 +2416,10 @@ export default function MomentumApp() {
                                     deal_source: deal.deal_source || 'on_market',
                                     original_list_price: deal.original_list_price || '',
                                     had_price_reduction: deal.had_price_reduction || false,
-                                    original_uc_price: deal.original_uc_price || ''
+                                    original_uc_price: deal.original_uc_price || '',
+                                    deal_type: deal.deal_type || 'wholesale',
+                                    sale_price: deal.sale_price || '',
+                                    commission_amount: deal.commission_amount || ''
                                   });
                                   setShowAddDeal(true);
                                 }}
@@ -2393,6 +2462,35 @@ export default function MomentumApp() {
                     </button>
                   </div>
                   <div className="p-6 pt-4 overflow-y-auto flex-1 space-y-4">
+                    {/* Deal Type Selection */}
+                    <div>
+                      <label className="text-slate-400 text-sm mb-2 block">Deal Type</label>
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input 
+                            type="radio"
+                            name="deal_type"
+                            value="wholesale"
+                            checked={dealForm.deal_type === 'wholesale'}
+                            onChange={e => setDealForm(f => ({ ...f, deal_type: e.target.value }))}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-slate-300">Wholesale Deal</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input 
+                            type="radio"
+                            name="deal_type"
+                            value="traditional"
+                            checked={dealForm.deal_type === 'traditional'}
+                            onChange={e => setDealForm(f => ({ ...f, deal_type: e.target.value }))}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-slate-300">Traditional Deal</span>
+                        </label>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="text-slate-400 text-sm">Property Address</label>
                       <input 
@@ -2403,28 +2501,63 @@ export default function MomentumApp() {
                         placeholder="123 Main St, City, State"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-slate-400 text-sm">UC Price ($)</label>
-                        <input 
-                          type="number"
-                          value={dealForm.uc_price}
-                          onChange={e => setDealForm(f => ({ ...f, uc_price: e.target.value }))}
-                          className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
-                          placeholder="100000"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-slate-400 text-sm">Sold Price ($)</label>
-                        <input 
-                          type="number"
-                          value={dealForm.sold_price}
-                          onChange={e => setDealForm(f => ({ ...f, sold_price: e.target.value }))}
-                          className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
-                          placeholder="120000"
-                        />
-                      </div>
-                    </div>
+
+                    {/* Wholesale Deal Fields */}
+                    {dealForm.deal_type === 'wholesale' && (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-slate-400 text-sm">UC Price ($)</label>
+                            <input 
+                              type="number"
+                              value={dealForm.uc_price}
+                              onChange={e => setDealForm(f => ({ ...f, uc_price: e.target.value }))}
+                              className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                              placeholder="100000"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-slate-400 text-sm">Sold Price ($)</label>
+                            <input 
+                              type="number"
+                              value={dealForm.sold_price}
+                              onChange={e => setDealForm(f => ({ ...f, sold_price: e.target.value }))}
+                              className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                              placeholder="120000"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Traditional Deal Fields */}
+                    {dealForm.deal_type === 'traditional' && (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-slate-400 text-sm">Sale Price ($) *</label>
+                            <input 
+                              type="number"
+                              value={dealForm.sale_price}
+                              onChange={e => setDealForm(f => ({ ...f, sale_price: e.target.value }))}
+                              className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                              placeholder="350000"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-slate-400 text-sm">Commission ($) *</label>
+                            <input 
+                              type="number"
+                              value={dealForm.commission_amount}
+                              onChange={e => setDealForm(f => ({ ...f, commission_amount: e.target.value }))}
+                              className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                              placeholder="10500"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
                     <div>
                       <label className="text-slate-400 text-sm">Closed Date</label>
                       <input 
@@ -2446,35 +2579,42 @@ export default function MomentumApp() {
                         ))}
                       </select>
                     </div>
-                    <div>
-                      <label className="text-slate-400 text-sm">Split With (optional)</label>
-                      <select
-                        value={dealForm.split_with_user_id}
-                        onChange={e => setDealForm(f => ({ ...f, split_with_user_id: e.target.value }))}
-                        className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
-                      >
-                        <option value="">No split</option>
-                        {teamMembers.filter(m => m.id !== (editingDeal?.user_id || currentUser?.id)).map(m => (
-                          <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {dealForm.split_with_user_id && (
-                      <div>
-                        <label className="text-slate-400 text-sm">Split % (Primary/Partner)</label>
-                        <select
-                          value={dealForm.split_percentage}
-                          onChange={e => setDealForm(f => ({ ...f, split_percentage: e.target.value }))}
-                          className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
-                        >
-                          <option value="50">50/50</option>
-                          <option value="60">60/40</option>
-                          <option value="70">70/30</option>
-                          <option value="75">75/25</option>
-                          <option value="80">80/20</option>
-                        </select>
-                      </div>
+
+                    {/* Split options only for wholesale deals */}
+                    {dealForm.deal_type === 'wholesale' && (
+                      <>
+                        <div>
+                          <label className="text-slate-400 text-sm">Split With (optional)</label>
+                          <select
+                            value={dealForm.split_with_user_id}
+                            onChange={e => setDealForm(f => ({ ...f, split_with_user_id: e.target.value }))}
+                            className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                          >
+                            <option value="">No split</option>
+                            {teamMembers.filter(m => m.id !== (editingDeal?.user_id || currentUser?.id)).map(m => (
+                              <option key={m.id} value={m.id}>{m.display_name || m.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {dealForm.split_with_user_id && (
+                          <div>
+                            <label className="text-slate-400 text-sm">Split % (Primary/Partner)</label>
+                            <select
+                              value={dealForm.split_percentage}
+                              onChange={e => setDealForm(f => ({ ...f, split_percentage: e.target.value }))}
+                              className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                            >
+                              <option value="50">50/50</option>
+                              <option value="60">60/40</option>
+                              <option value="70">70/30</option>
+                              <option value="75">75/25</option>
+                              <option value="80">80/20</option>
+                            </select>
+                          </div>
+                        )}
+                      </>
                     )}
+
                     <div>
                       <label className="text-slate-400 text-sm">Notes</label>
                       <textarea 
@@ -2485,65 +2625,71 @@ export default function MomentumApp() {
                         placeholder="Any notes about this deal..."
                       />
                     </div>
-                    <div>
-                      <label className="text-slate-400 text-sm mb-2 block">Deal Source</label>
-                      <div className="flex gap-4">
-                        <label className="flex items-center gap-2 cursor-pointer">
+
+                    {/* Wholesale-only fields */}
+                    {dealForm.deal_type === 'wholesale' && (
+                      <>
+                        <div>
+                          <label className="text-slate-400 text-sm mb-2 block">Deal Source</label>
+                          <div className="flex gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input 
+                                type="radio"
+                                name="deal_source"
+                                value="on_market"
+                                checked={dealForm.deal_source === 'on_market'}
+                                onChange={e => setDealForm(f => ({ ...f, deal_source: e.target.value }))}
+                                className="w-4 h-4"
+                              />
+                              <span className="text-slate-300">On Market</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input 
+                                type="radio"
+                                name="deal_source"
+                                value="off_market"
+                                checked={dealForm.deal_source === 'off_market'}
+                                onChange={e => setDealForm(f => ({ ...f, deal_source: e.target.value }))}
+                                className="w-4 h-4"
+                              />
+                              <span className="text-slate-300">Off Market</span>
+                            </label>
+                          </div>
+                        </div>
+                        {dealForm.deal_source === 'on_market' && (
+                          <div>
+                            <label className="text-slate-400 text-sm">Original List Price ($)</label>
+                            <input 
+                              type="number"
+                              value={dealForm.original_list_price}
+                              onChange={e => setDealForm(f => ({ ...f, original_list_price: e.target.value }))}
+                              className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                              placeholder="150000"
+                            />
+                          </div>
+                        )}
+                        <div className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-lg">
                           <input 
-                            type="radio"
-                            name="deal_source"
-                            value="on_market"
-                            checked={dealForm.deal_source === 'on_market'}
-                            onChange={e => setDealForm(f => ({ ...f, deal_source: e.target.value }))}
-                            className="w-4 h-4"
+                            type="checkbox"
+                            checked={dealForm.had_price_reduction}
+                            onChange={e => setDealForm(f => ({ ...f, had_price_reduction: e.target.checked }))}
+                            className="w-5 h-5 rounded"
                           />
-                          <span className="text-slate-300">On Market</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="radio"
-                            name="deal_source"
-                            value="off_market"
-                            checked={dealForm.deal_source === 'off_market'}
-                            onChange={e => setDealForm(f => ({ ...f, deal_source: e.target.value }))}
-                            className="w-4 h-4"
-                          />
-                          <span className="text-slate-300">Off Market</span>
-                        </label>
-                      </div>
-                    </div>
-                    {dealForm.deal_source === 'on_market' && (
-                      <div>
-                        <label className="text-slate-400 text-sm">Original List Price ($)</label>
-                        <input 
-                          type="number"
-                          value={dealForm.original_list_price}
-                          onChange={e => setDealForm(f => ({ ...f, original_list_price: e.target.value }))}
-                          className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
-                          placeholder="150000"
-                        />
-                      </div>
-                    )}
-                    <div className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-lg">
-                      <input 
-                        type="checkbox"
-                        checked={dealForm.had_price_reduction}
-                        onChange={e => setDealForm(f => ({ ...f, had_price_reduction: e.target.checked }))}
-                        className="w-5 h-5 rounded"
-                      />
-                      <label className="text-slate-300 text-sm">Had Price Reduction</label>
-                    </div>
-                    {dealForm.had_price_reduction && (
-                      <div>
-                        <label className="text-slate-400 text-sm">Original Under Contract Price ($)</label>
-                        <input 
-                          type="number"
-                          value={dealForm.original_uc_price}
-                          onChange={e => setDealForm(f => ({ ...f, original_uc_price: e.target.value }))}
-                          className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
-                          placeholder="120000"
-                        />
-                      </div>
+                          <label className="text-slate-300 text-sm">Had Price Reduction</label>
+                        </div>
+                        {dealForm.had_price_reduction && (
+                          <div>
+                            <label className="text-slate-400 text-sm">Original Under Contract Price ($)</label>
+                            <input 
+                              type="number"
+                              value={dealForm.original_uc_price}
+                              onChange={e => setDealForm(f => ({ ...f, original_uc_price: e.target.value }))}
+                              className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                              placeholder="120000"
+                            />
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                   <div className="flex gap-3 p-6 pt-4 border-t border-slate-700">
@@ -2555,25 +2701,54 @@ export default function MomentumApp() {
                     </button>
                     <button 
                       onClick={async () => {
-                        if (!dealForm.property_address || !dealForm.uc_price || !dealForm.sold_price || !dealForm.closed_date) {
-                          alert('Please fill in all required fields');
-                          return;
+                        // Validation based on deal type
+                        if (dealForm.deal_type === 'wholesale') {
+                          if (!dealForm.property_address || !dealForm.uc_price || !dealForm.sold_price || !dealForm.closed_date) {
+                            alert('Please fill in all required fields');
+                            return;
+                          }
+                        } else {
+                          // Traditional deal
+                          if (!dealForm.property_address || !dealForm.sale_price || !dealForm.commission_amount || !dealForm.closed_date) {
+                            alert('Please fill in all required fields (Property Address, Sale Price, Commission Amount, Closed Date)');
+                            return;
+                          }
                         }
+                        
                         const dealData = {
                           organization_id: organization.id,
                           user_id: editingDeal?.user_id || currentUser.id,
                           property_address: dealForm.property_address,
-                          uc_price: parseFloat(dealForm.uc_price),
-                          sold_price: parseFloat(dealForm.sold_price),
-                          split_with_user_id: dealForm.split_with_user_id || null,
-                          split_percentage: dealForm.split_with_user_id ? parseFloat(dealForm.split_percentage) : null,
                           closed_date: dealForm.closed_date,
                           notes: dealForm.notes,
-                          deal_source: dealForm.deal_source,
-                          original_list_price: dealForm.deal_source === 'on_market' && dealForm.original_list_price ? parseFloat(dealForm.original_list_price) : null,
-                          had_price_reduction: dealForm.had_price_reduction,
-                          original_uc_price: dealForm.had_price_reduction && dealForm.original_uc_price ? parseFloat(dealForm.original_uc_price) : null
+                          deal_type: dealForm.deal_type
                         };
+
+                        if (dealForm.deal_type === 'wholesale') {
+                          dealData.uc_price = parseFloat(dealForm.uc_price);
+                          dealData.sold_price = parseFloat(dealForm.sold_price);
+                          dealData.split_with_user_id = dealForm.split_with_user_id || null;
+                          dealData.split_percentage = dealForm.split_with_user_id ? parseFloat(dealForm.split_percentage) : null;
+                          dealData.deal_source = dealForm.deal_source;
+                          dealData.original_list_price = dealForm.deal_source === 'on_market' && dealForm.original_list_price ? parseFloat(dealForm.original_list_price) : null;
+                          dealData.had_price_reduction = dealForm.had_price_reduction;
+                          dealData.original_uc_price = dealForm.had_price_reduction && dealForm.original_uc_price ? parseFloat(dealForm.original_uc_price) : null;
+                          dealData.sale_price = null;
+                          dealData.commission_amount = null;
+                        } else {
+                          // Traditional deal
+                          dealData.sale_price = parseFloat(dealForm.sale_price);
+                          dealData.commission_amount = parseFloat(dealForm.commission_amount);
+                          dealData.uc_price = null;
+                          dealData.sold_price = null;
+                          dealData.split_with_user_id = null;
+                          dealData.split_percentage = null;
+                          dealData.deal_source = null;
+                          dealData.original_list_price = null;
+                          dealData.had_price_reduction = false;
+                          dealData.original_uc_price = null;
+                        }
+
                         if (editingDeal) {
                           await db.deals.update(editingDeal.id, dealData);
                         } else {
