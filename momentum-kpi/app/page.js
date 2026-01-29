@@ -1061,6 +1061,7 @@ export default function MomentumApp() {
   const [dealsYear, setDealsYear] = useState(new Date().getFullYear());
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [editingDeal, setEditingDeal] = useState(null);
+  const [showRevenueOnHome, setShowRevenueOnHome] = useState(true); // User preference for showing revenue on home
   const [dealForm, setDealForm] = useState({
     property_address: '',
     uc_price: '',
@@ -1167,6 +1168,7 @@ export default function MomentumApp() {
       const user = JSON.parse(saved);
       setCurrentUser(user);
       setProfileForm({ display_name: user.display_name || '', avatar_emoji: user.avatar_emoji || '', avatar_url: user.avatar_url || '' });
+      setShowRevenueOnHome(user.show_revenue_home !== false); // Default to true if not set
       if (user.organization_id) {
         const { data: orgs } = await db.orgs.getById(user.organization_id);
         if (orgs?.[0]) setOrganization(orgs[0]);
@@ -1484,6 +1486,20 @@ export default function MomentumApp() {
       setShowProfileModal(false);
     } catch (error) { console.error('Failed to save profile:', error); }
     setProfileSaving(false);
+  };
+
+  const toggleShowRevenueOnHome = async () => {
+    const newValue = !showRevenueOnHome;
+    setShowRevenueOnHome(newValue);
+    try {
+      await db.users.update(currentUser.id, { show_revenue_home: newValue });
+      const updatedUser = { ...currentUser, show_revenue_home: newValue };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('momentum_user', JSON.stringify(updatedUser));
+    } catch (error) { 
+      console.error('Failed to save preference:', error); 
+      setShowRevenueOnHome(!newValue); // Revert on error
+    }
   };
 
   const handleImageUpload = (e) => {
@@ -1919,8 +1935,8 @@ export default function MomentumApp() {
               <button onClick={openProfileModal} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium">✏️ Edit Profile</button>
             </div>
 
-            {/* Combined Revenue Widget */}
-            {(() => {
+            {/* Combined Revenue Widget - Only shown if user has enabled it */}
+            {showRevenueOnHome && (() => {
               const currentYear = new Date().getFullYear();
               
               // Wholesale deals
@@ -2243,6 +2259,22 @@ export default function MomentumApp() {
                   + Add Deal
                 </button>
               )}
+            </div>
+
+            {/* Show Revenue on Home Toggle */}
+            <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-white font-medium">Show Revenue on Home</p>
+                  <p className="text-slate-400 text-sm">Display YTD revenue widget on your home page</p>
+                </div>
+                <button
+                  onClick={toggleShowRevenueOnHome}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${showRevenueOnHome ? 'bg-green-600' : 'bg-slate-600'}`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${showRevenueOnHome ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
             </div>
 
             {/* Summary Cards */}
