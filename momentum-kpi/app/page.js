@@ -1919,7 +1919,7 @@ export default function MomentumApp() {
               <button onClick={openProfileModal} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium">✏️ Edit Profile</button>
             </div>
 
-            {/* Revenue Widgets */}
+            {/* Combined Revenue Widget */}
             {(() => {
               const currentYear = new Date().getFullYear();
               
@@ -1940,54 +1940,36 @@ export default function MomentumApp() {
               // Total
               const totalRevenue = wholesaleRevenue + traditionalRevenue;
               const totalDeals = wholesaleDeals.length + traditionalDeals.length;
+              const hasBoth = wholesaleRevenue > 0 && traditionalRevenue > 0;
 
               return (
-                <>
-                  {/* Total Revenue YTD */}
-                  <div 
-                    onClick={() => setCurrentTab('deals')}
-                    className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 rounded-2xl md:rounded-xl p-4 border border-purple-700/30 cursor-pointer hover:border-purple-600/50 transition"
-                  >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-purple-400/70 text-xs uppercase tracking-wide">Total Revenue YTD {currentYear}</p>
-                        <p className="text-3xl font-black text-purple-400">${totalRevenue.toLocaleString()}</p>
-                        <p className="text-purple-400/50 text-sm">{totalDeals} deals closed</p>
-                      </div>
-                      <div className="text-4xl">💎</div>
+                <div 
+                  onClick={() => setCurrentTab('deals')}
+                  className="bg-gradient-to-br from-green-900/40 via-emerald-900/30 to-teal-900/40 rounded-2xl md:rounded-xl p-4 border border-green-700/30 cursor-pointer hover:border-green-600/50 transition"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <p className="text-green-400/70 text-xs uppercase tracking-wide">YTD Revenue {currentYear}</p>
+                      <p className="text-3xl font-black text-green-400">${totalRevenue.toLocaleString()}</p>
+                      <p className="text-green-400/50 text-sm">{totalDeals} deals closed</p>
+                      
+                      {/* Breakdown - shows when there's any revenue */}
+                      {totalRevenue > 0 && (
+                        <div className="mt-3 pt-3 border-t border-green-700/30 grid grid-cols-2 gap-2">
+                          <div>
+                            <p className="text-green-400/50 text-xs">📦 Wholesale</p>
+                            <p className="text-green-300 font-semibold">${wholesaleRevenue.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-blue-400/50 text-xs">🏠 Traditional</p>
+                            <p className="text-blue-300 font-semibold">${traditionalRevenue.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
+                    <div className="text-4xl">💰</div>
                   </div>
-
-                  {/* Wholesale Revenue YTD */}
-                  <div 
-                    onClick={() => setCurrentTab('deals')}
-                    className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 rounded-2xl md:rounded-xl p-4 border border-green-700/30 cursor-pointer hover:border-green-600/50 transition"
-                  >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-green-400/70 text-xs uppercase tracking-wide">Wholesale Revenue YTD {currentYear}</p>
-                        <p className="text-3xl font-black text-green-400">${wholesaleRevenue.toLocaleString()}</p>
-                        <p className="text-green-400/50 text-sm">{wholesaleDeals.length} wholesale deals</p>
-                      </div>
-                      <div className="text-4xl">📦</div>
-                    </div>
-                  </div>
-
-                  {/* Traditional Revenue YTD */}
-                  <div 
-                    onClick={() => setCurrentTab('deals')}
-                    className="bg-gradient-to-r from-blue-900/30 to-indigo-900/30 rounded-2xl md:rounded-xl p-4 border border-blue-700/30 cursor-pointer hover:border-blue-600/50 transition"
-                  >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-blue-400/70 text-xs uppercase tracking-wide">Traditional Revenue YTD {currentYear}</p>
-                        <p className="text-3xl font-black text-blue-400">${traditionalRevenue.toLocaleString()}</p>
-                        <p className="text-blue-400/50 text-sm">{traditionalDeals.length} traditional deals</p>
-                      </div>
-                      <div className="text-4xl">🏠</div>
-                    </div>
-                  </div>
-                </>
+                </div>
               );
             })()}
 
