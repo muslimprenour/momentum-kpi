@@ -1068,7 +1068,10 @@ export default function MomentumApp() {
     split_with_user_id: '',
     split_percentage: '50',
     closed_date: getTodayInOrgTimezone(),
-    notes: ''
+    notes: '',
+    had_price_reduction: false,
+    original_list_price: '',
+    reduced_price: ''
   });
   const [lastOfferCount, setLastOfferCount] = useState(0);
 
@@ -2200,7 +2203,7 @@ export default function MomentumApp() {
               </div>
               {currentUser?.role === 'owner' && (
                 <button 
-                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', closed_date: getTodayInOrgTimezone(), notes: '' }); }}
+                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', closed_date: getTodayInOrgTimezone(), notes: '', had_price_reduction: false, original_list_price: '', reduced_price: '' }); }}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
                 >
                   + Add Deal
@@ -2306,6 +2309,11 @@ export default function MomentumApp() {
                               Split with {splitUser.display_name || splitUser.name} ({splitPct}/{100-splitPct})
                             </p>
                           )}
+                          {deal.had_price_reduction && (
+                            <p className="text-orange-400 text-sm mt-1">
+                              📉 Price reduced: ${parseFloat(deal.original_list_price || 0).toLocaleString()} → ${parseFloat(deal.reduced_price || 0).toLocaleString()}
+                            </p>
+                          )}
                           {primaryUser && currentUser?.role === 'owner' && (
                             <p className="text-slate-500 text-xs mt-1">
                               Primary: {primaryUser.display_name || primaryUser.name}
@@ -2329,7 +2337,10 @@ export default function MomentumApp() {
                                     split_with_user_id: deal.split_with_user_id || '',
                                     split_percentage: deal.split_percentage || '50',
                                     closed_date: deal.closed_date,
-                                    notes: deal.notes || ''
+                                    notes: deal.notes || '',
+                                    had_price_reduction: deal.had_price_reduction || false,
+                                    original_list_price: deal.original_list_price || '',
+                                    reduced_price: deal.reduced_price || ''
                                   });
                                   setShowAddDeal(true);
                                 }}
@@ -2456,6 +2467,39 @@ export default function MomentumApp() {
                         placeholder="Any notes about this deal..."
                       />
                     </div>
+                    <div className="flex items-center gap-3 p-3 bg-slate-700/50 rounded-lg">
+                      <input 
+                        type="checkbox"
+                        checked={dealForm.had_price_reduction}
+                        onChange={e => setDealForm(f => ({ ...f, had_price_reduction: e.target.checked }))}
+                        className="w-5 h-5 rounded"
+                      />
+                      <label className="text-slate-300 text-sm">Had Price Reduction</label>
+                    </div>
+                    {dealForm.had_price_reduction && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-slate-400 text-sm">Original List Price ($)</label>
+                          <input 
+                            type="number"
+                            value={dealForm.original_list_price}
+                            onChange={e => setDealForm(f => ({ ...f, original_list_price: e.target.value }))}
+                            className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                            placeholder="150000"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-slate-400 text-sm">Reduced Price ($)</label>
+                          <input 
+                            type="number"
+                            value={dealForm.reduced_price}
+                            onChange={e => setDealForm(f => ({ ...f, reduced_price: e.target.value }))}
+                            className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                            placeholder="130000"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-3 mt-6">
                     <button 
@@ -2479,7 +2523,10 @@ export default function MomentumApp() {
                           split_with_user_id: dealForm.split_with_user_id || null,
                           split_percentage: dealForm.split_with_user_id ? parseFloat(dealForm.split_percentage) : null,
                           closed_date: dealForm.closed_date,
-                          notes: dealForm.notes
+                          notes: dealForm.notes,
+                          had_price_reduction: dealForm.had_price_reduction,
+                          original_list_price: dealForm.had_price_reduction && dealForm.original_list_price ? parseFloat(dealForm.original_list_price) : null,
+                          reduced_price: dealForm.had_price_reduction && dealForm.reduced_price ? parseFloat(dealForm.reduced_price) : null
                         };
                         if (editingDeal) {
                           await db.deals.update(editingDeal.id, dealData);
