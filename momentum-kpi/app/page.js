@@ -701,38 +701,42 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents }) => {
   const handleSave = async () => {
     if (!form.agent_name.trim()) return;
     
-    if (editingId) {
-      // Update existing
-      const updates = {
-        agent_name: form.agent_name,
-        phone: form.phone,
-        email: form.email,
-        deal_closed: form.deal_closed,
-        review_given: form.review_given,
-        gift_sent: form.gift_sent,
-        updated_at: new Date().toISOString()
-      };
-      await db.vipAgents.update(editingId, updates);
-      setVipAgents(prev => prev.map(a => a.id === editingId ? { ...a, ...updates } : a));
-    } else {
-      // Create new
-      const newAgent = {
-        user_id: userId,
-        agent_name: form.agent_name,
-        phone: form.phone,
-        email: form.email,
-        deal_closed: form.deal_closed,
-        review_given: form.review_given,
-        gift_sent: form.gift_sent,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      const { data } = await db.vipAgents.create(newAgent);
-      if (data?.[0]) {
-        setVipAgents(prev => [data[0], ...prev]);
+    try {
+      if (editingId) {
+        // Update existing
+        const updates = {
+          agent_name: form.agent_name,
+          phone: form.phone,
+          email: form.email,
+          deal_closed: form.deal_closed,
+          review_given: form.review_given,
+          gift_sent: form.gift_sent,
+          updated_at: new Date().toISOString()
+        };
+        await db.vipAgents.update(editingId, updates);
+        setVipAgents(prev => prev.map(a => a.id === editingId ? { ...a, ...updates } : a));
+      } else {
+        // Create new
+        const newAgent = {
+          user_id: userId,
+          agent_name: form.agent_name,
+          phone: form.phone,
+          email: form.email,
+          deal_closed: form.deal_closed,
+          review_given: form.review_given,
+          gift_sent: form.gift_sent,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        const { data } = await db.vipAgents.create(newAgent);
+        if (data?.[0]) {
+          setVipAgents(prev => [data[0], ...prev]);
+        }
       }
+      resetForm();
+    } catch (e) {
+      alert('VIP agents table not set up yet. Run the SQL in Supabase first!');
     }
-    resetForm();
   };
 
   const handleEdit = (agent) => {
@@ -750,14 +754,22 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents }) => {
 
   const handleDelete = async (agentId) => {
     if (!confirm('Delete this VIP agent?')) return;
-    await db.vipAgents.delete(agentId);
-    setVipAgents(prev => prev.filter(a => a.id !== agentId));
+    try {
+      await db.vipAgents.delete(agentId);
+      setVipAgents(prev => prev.filter(a => a.id !== agentId));
+    } catch (e) {
+      console.log('Delete failed');
+    }
   };
 
   const toggleField = async (agent, field) => {
-    const newValue = !agent[field];
-    await db.vipAgents.update(agent.id, { [field]: newValue, updated_at: new Date().toISOString() });
-    setVipAgents(prev => prev.map(a => a.id === agent.id ? { ...a, [field]: newValue } : a));
+    try {
+      const newValue = !agent[field];
+      await db.vipAgents.update(agent.id, { [field]: newValue, updated_at: new Date().toISOString() });
+      setVipAgents(prev => prev.map(a => a.id === agent.id ? { ...a, [field]: newValue } : a));
+    } catch (e) {
+      console.log('Toggle failed');
+    }
   };
 
   return (
@@ -1088,8 +1100,12 @@ export default function MomentumApp() {
 
   const loadVipAgents = async () => {
     if (!currentUser) return;
-    const { data } = await db.vipAgents.getByUser(currentUser.id);
-    if (data) setVipAgents(data);
+    try {
+      const { data, error } = await db.vipAgents.getByUser(currentUser.id);
+      if (data && !error) setVipAgents(data);
+    } catch (e) {
+      console.log('VIP agents table not ready yet');
+    }
   };
 
   const checkSession = async () => {
