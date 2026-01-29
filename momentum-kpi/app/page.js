@@ -2382,9 +2382,17 @@ export default function MomentumApp() {
             {/* Add/Edit Deal Modal */}
             {showAddDeal && (
               <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-                <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-slate-700">
-                  <h3 className="text-xl font-bold text-white mb-4">{editingDeal ? 'Edit Deal' : 'Add New Deal'}</h3>
-                  <div className="space-y-4">
+                <div className="bg-slate-800 rounded-2xl w-full max-w-md border border-slate-700 max-h-[90vh] flex flex-col">
+                  <div className="flex justify-between items-center p-6 pb-4 border-b border-slate-700">
+                    <h3 className="text-xl font-bold text-white">{editingDeal ? 'Edit Deal' : 'Add New Deal'}</h3>
+                    <button 
+                      onClick={() => { setShowAddDeal(false); setEditingDeal(null); }}
+                      className="text-slate-400 hover:text-white text-2xl leading-none"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="p-6 pt-4 overflow-y-auto flex-1 space-y-4">
                     <div>
                       <label className="text-slate-400 text-sm">Property Address</label>
                       <input 
@@ -2538,7 +2546,7 @@ export default function MomentumApp() {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-3 mt-6">
+                  <div className="flex gap-3 p-6 pt-4 border-t border-slate-700">
                     <button 
                       onClick={() => { setShowAddDeal(false); setEditingDeal(null); }}
                       className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 rounded-lg"
