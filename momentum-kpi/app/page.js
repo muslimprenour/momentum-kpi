@@ -1915,7 +1915,7 @@ export default function MomentumApp() {
             </div>
 
             {/* YTD Revenue Widget */}
-            {deals.length > 0 && (() => {
+            {(() => {
               const currentYear = new Date().getFullYear();
               const ytdDeals = deals.filter(d => {
                 const dealYear = new Date(d.closed_date).getFullYear();
