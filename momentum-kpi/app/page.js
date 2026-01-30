@@ -3080,13 +3080,13 @@ export default function MomentumApp() {
                         
                         try {
                           if (editingDeal) {
-                            const updateResult = await db.deals.update(editingDeal.id, dealData);
-                            if (updateResult?.error) throw new Error(updateResult.error.message || 'Update failed');
+                            const { data, error } = await db.deals.update(editingDeal.id, dealData);
+                            if (error) throw new Error(error.message || JSON.stringify(error));
                           } else {
-                            const result = await db.deals.create(dealData);
-                            console.log('Create result:', result);
-                            if (result?.error) throw new Error(result.error.message || 'Create failed');
-                            if (result && result[0]) dealId = result[0].id;
+                            const { data, error } = await db.deals.create(dealData);
+                            console.log('Create result:', { data, error });
+                            if (error) throw new Error(error.message || JSON.stringify(error));
+                            if (data && data[0]) dealId = data[0].id;
                           }
                           
                           // Upload any new files
