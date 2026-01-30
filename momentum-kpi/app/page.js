@@ -1078,8 +1078,34 @@ export default function MomentumApp() {
     sale_price: '',
     commission_amount: '',
     list_back_secured: false,
-    list_back_commission_pct: ''
+    list_back_commission_pct: '',
+    purchase_contract_url: '',
+    assignment_contract_url: '',
+    hud_url: ''
   });
+  const [dealFiles, setDealFiles] = useState({
+    purchase_contract: null,
+    assignment_contract: null,
+    hud: null
+  });
+  
+  // Upload file to Supabase Storage
+  const uploadDealDocument = async (file, dealId, docType) => {
+    if (!file) return null;
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${organization.id}/${dealId}/${docType}.${fileExt}`;
+    const { data, error } = await supabase.storage
+      .from('deal-documents')
+      .upload(fileName, file, { upsert: true });
+    if (error) {
+      console.error('Upload error:', error);
+      return null;
+    }
+    const { data: urlData } = supabase.storage
+      .from('deal-documents')
+      .getPublicUrl(fileName);
+    return urlData.publicUrl;
+  };
   const [lastOfferCount, setLastOfferCount] = useState(0);
 
   const today = getTodayInOrgTimezone();
@@ -2253,7 +2279,7 @@ export default function MomentumApp() {
               </div>
               {currentUser?.role === 'owner' && (
                 <button 
-                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '' }); }}
+                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '' }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
                 >
                   + Add Deal
@@ -2439,8 +2465,12 @@ export default function MomentumApp() {
                                     sale_price: deal.sale_price || '',
                                     commission_amount: deal.commission_amount || '',
                                     list_back_secured: deal.list_back_secured || false,
-                                    list_back_commission_pct: deal.list_back_commission_pct || ''
+                                    list_back_commission_pct: deal.list_back_commission_pct || '',
+                                    purchase_contract_url: deal.purchase_contract_url || '',
+                                    assignment_contract_url: deal.assignment_contract_url || '',
+                                    hud_url: deal.hud_url || ''
                                   });
+                                  setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
                                   setShowAddDeal(true);
                                 }}
                                 className="text-blue-400 hover:text-blue-300 text-sm"
@@ -2646,6 +2676,64 @@ export default function MomentumApp() {
                       />
                     </div>
 
+                    {/* Document Uploads */}
+                    <div className="border-t border-slate-700 pt-4 mt-4">
+                      <label className="text-slate-400 text-sm block mb-3">📎 Deal Documents (PDF)</label>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-slate-300 text-xs block mb-1">Purchase & Sale Contract</label>
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="file"
+                              accept=".pdf"
+                              onChange={e => setDealFiles(f => ({ ...f, purchase_contract: e.target.files[0] }))}
+                              className="flex-1 text-sm text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-slate-600 file:text-white hover:file:bg-slate-500"
+                            />
+                            {(dealForm.purchase_contract_url || dealFiles.purchase_contract) && (
+                              <span className="text-green-400 text-xs">✓</span>
+                            )}
+                          </div>
+                          {dealForm.purchase_contract_url && !dealFiles.purchase_contract && (
+                            <a href={dealForm.purchase_contract_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-xs hover:underline">View current</a>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-slate-300 text-xs block mb-1">Assignment Contract</label>
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="file"
+                              accept=".pdf"
+                              onChange={e => setDealFiles(f => ({ ...f, assignment_contract: e.target.files[0] }))}
+                              className="flex-1 text-sm text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-slate-600 file:text-white hover:file:bg-slate-500"
+                            />
+                            {(dealForm.assignment_contract_url || dealFiles.assignment_contract) && (
+                              <span className="text-green-400 text-xs">✓</span>
+                            )}
+                          </div>
+                          {dealForm.assignment_contract_url && !dealFiles.assignment_contract && (
+                            <a href={dealForm.assignment_contract_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-xs hover:underline">View current</a>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-slate-300 text-xs block mb-1">HUD / Settlement Statement</label>
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="file"
+                              accept=".pdf"
+                              onChange={e => setDealFiles(f => ({ ...f, hud: e.target.files[0] }))}
+                              className="flex-1 text-sm text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-slate-600 file:text-white hover:file:bg-slate-500"
+                            />
+                            {(dealForm.hud_url || dealFiles.hud) && (
+                              <span className="text-green-400 text-xs">✓</span>
+                            )}
+                          </div>
+                          {dealForm.hud_url && !dealFiles.hud && (
+                            <a href={dealForm.hud_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-xs hover:underline">View current</a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Wholesale-only fields */}
                     {dealForm.deal_type === 'wholesale' && (
                       <>
@@ -2795,11 +2883,38 @@ export default function MomentumApp() {
                           dealData.list_back_commission_pct = null;
                         }
 
+                        // Handle deal save with file uploads
+                        let dealId = editingDeal?.id;
+                        
                         if (editingDeal) {
                           await db.deals.update(editingDeal.id, dealData);
                         } else {
-                          await db.deals.create(dealData);
+                          const result = await db.deals.create(dealData);
+                          if (result && result[0]) dealId = result[0].id;
                         }
+                        
+                        // Upload any new files
+                        if (dealId) {
+                          const fileUpdates = {};
+                          if (dealFiles.purchase_contract) {
+                            const url = await uploadDealDocument(dealFiles.purchase_contract, dealId, 'purchase_contract');
+                            if (url) fileUpdates.purchase_contract_url = url;
+                          }
+                          if (dealFiles.assignment_contract) {
+                            const url = await uploadDealDocument(dealFiles.assignment_contract, dealId, 'assignment_contract');
+                            if (url) fileUpdates.assignment_contract_url = url;
+                          }
+                          if (dealFiles.hud) {
+                            const url = await uploadDealDocument(dealFiles.hud, dealId, 'hud');
+                            if (url) fileUpdates.hud_url = url;
+                          }
+                          // Update deal with file URLs if any were uploaded
+                          if (Object.keys(fileUpdates).length > 0) {
+                            await db.deals.update(dealId, fileUpdates);
+                          }
+                        }
+                        
+                        setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
                         setShowAddDeal(false);
                         setEditingDeal(null);
                         loadDeals();
