@@ -1068,6 +1068,8 @@ export default function MomentumApp() {
     sold_price: '',
     split_with_user_id: '',
     split_percentage: '50',
+    split_type: 'percentage',
+    split_amount: '',
     closed_date: getTodayInOrgTimezone(),
     notes: '',
     deal_source: 'on_market',
@@ -1081,7 +1083,14 @@ export default function MomentumApp() {
     list_back_commission_pct: '',
     purchase_contract_url: '',
     assignment_contract_url: '',
-    hud_url: ''
+    hud_url: '',
+    dispo_help: false,
+    dispo_name: '',
+    dispo_email: '',
+    dispo_phone: '',
+    dispo_share_type: 'percentage',
+    dispo_share_percentage: '',
+    dispo_share_amount: ''
   });
   const [dealFiles, setDealFiles] = useState({
     purchase_contract: null,
@@ -2279,7 +2288,7 @@ export default function MomentumApp() {
               </div>
               {currentUser?.role === 'owner' && (
                 <button 
-                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '' }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
+                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', split_type: 'percentage', split_amount: '', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '', dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '', dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '' }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
                 >
                   + Add Deal
@@ -2372,19 +2381,37 @@ export default function MomentumApp() {
                   const primaryUser = teamMembers.find(m => m.id === deal.user_id);
                   const splitUser = deal.split_with_user_id ? teamMembers.find(m => m.id === deal.split_with_user_id) : null;
                   const isTraditional = deal.deal_type === 'traditional';
-                  const revenue = parseFloat(deal.revenue || 0);
+                  const revenue = parseFloat(deal.revenue || 0); // Company revenue (full spread)
                   const commission = parseFloat(deal.commission_amount || 0);
-                  const splitPct = parseFloat(deal.split_percentage || 50);
                   
-                  // Calculate net for current user (only for wholesale deals)
-                  let userNet = revenue;
-                  if (!isTraditional && deal.split_with_user_id) {
-                    if (deal.user_id === currentUser?.id) {
-                      userNet = revenue * splitPct / 100;
-                    } else if (deal.split_with_user_id === currentUser?.id) {
-                      userNet = revenue * (100 - splitPct) / 100;
+                  // Calculate deductions
+                  let partnerShare = 0;
+                  let dispoShare = 0;
+                  
+                  if (!isTraditional) {
+                    // Partner split
+                    if (deal.split_with_user_id) {
+                      if (deal.split_type === 'fixed' && deal.split_amount) {
+                        partnerShare = parseFloat(deal.split_amount);
+                      } else {
+                        const splitPct = parseFloat(deal.split_percentage || 50);
+                        partnerShare = revenue * (100 - splitPct) / 100;
+                      }
+                    }
+                    
+                    // Dispo share
+                    if (deal.dispo_help) {
+                      if (deal.dispo_share_type === 'fixed' && deal.dispo_share_amount) {
+                        dispoShare = parseFloat(deal.dispo_share_amount);
+                      } else if (deal.dispo_share_percentage) {
+                        dispoShare = revenue * parseFloat(deal.dispo_share_percentage) / 100;
+                      }
                     }
                   }
+                  
+                  // My net = revenue - partner share - dispo share
+                  const myNet = revenue - partnerShare - dispoShare;
+                  const splitPct = parseFloat(deal.split_percentage || 50);
 
                   return (
                     <div key={deal.id} className="bg-slate-800 rounded-xl p-4 border border-slate-700">
@@ -2411,7 +2438,12 @@ export default function MomentumApp() {
                           )}
                           {!isTraditional && splitUser && (
                             <p className="text-slate-400 text-sm mt-1">
-                              Split with {splitUser.display_name || splitUser.name} ({splitPct}/{100-splitPct})
+                              Split with {splitUser.display_name || splitUser.name} {deal.split_type === 'fixed' ? `($${parseFloat(deal.split_amount || 0).toLocaleString()})` : `(${splitPct}/${100-splitPct})`}
+                            </p>
+                          )}
+                          {!isTraditional && deal.dispo_help && currentUser?.role === 'owner' && (
+                            <p className="text-amber-400 text-sm mt-1">
+                              🤝 Dispo: {deal.dispo_name} {deal.dispo_share_type === 'fixed' ? `($${parseFloat(deal.dispo_share_amount || 0).toLocaleString()})` : `(${deal.dispo_share_percentage}%)`}
                             </p>
                           )}
                           {!isTraditional && deal.deal_source === 'off_market' && (
@@ -2453,8 +2485,16 @@ export default function MomentumApp() {
                           ) : (
                             <>
                               <p className="text-2xl font-bold text-green-400">${revenue.toLocaleString()}</p>
+                              <p className="text-xs text-slate-500">Company Revenue</p>
+                              {(partnerShare > 0 || dispoShare > 0) && currentUser?.role === 'owner' && (
+                                <div className="text-xs text-slate-400 mt-1 space-y-0.5">
+                                  {partnerShare > 0 && <p>Partner: -${partnerShare.toLocaleString()}</p>}
+                                  {dispoShare > 0 && <p>Dispo: -${dispoShare.toLocaleString()}</p>}
+                                  <p className="text-green-300 font-semibold">My Net: ${myNet.toLocaleString()}</p>
+                                </div>
+                              )}
                               {deal.split_with_user_id && currentUser?.role !== 'owner' && (
-                                <p className="text-sm text-slate-400">Your take: <span className="text-green-300">${userNet.toLocaleString()}</span></p>
+                                <p className="text-sm text-slate-400">Your take: <span className="text-green-300">${(deal.split_type === 'fixed' ? (revenue - parseFloat(deal.split_amount || 0)) : (revenue * splitPct / 100)).toLocaleString()}</span></p>
                               )}
                             </>
                           )}
@@ -2469,6 +2509,8 @@ export default function MomentumApp() {
                                     sold_price: deal.sold_price || '',
                                     split_with_user_id: deal.split_with_user_id || '',
                                     split_percentage: deal.split_percentage || '50',
+                                    split_type: deal.split_type || 'percentage',
+                                    split_amount: deal.split_amount || '',
                                     closed_date: deal.closed_date,
                                     notes: deal.notes || '',
                                     deal_source: deal.deal_source || 'on_market',
@@ -2482,7 +2524,14 @@ export default function MomentumApp() {
                                     list_back_commission_pct: deal.list_back_commission_pct || '',
                                     purchase_contract_url: deal.purchase_contract_url || '',
                                     assignment_contract_url: deal.assignment_contract_url || '',
-                                    hud_url: deal.hud_url || ''
+                                    hud_url: deal.hud_url || '',
+                                    dispo_help: deal.dispo_help || false,
+                                    dispo_name: deal.dispo_name || '',
+                                    dispo_email: deal.dispo_email || '',
+                                    dispo_phone: deal.dispo_phone || '',
+                                    dispo_share_type: deal.dispo_share_type || 'percentage',
+                                    dispo_share_percentage: deal.dispo_share_percentage || '',
+                                    dispo_share_amount: deal.dispo_share_amount || ''
                                   });
                                   setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
                                   setShowAddDeal(true);
@@ -2648,7 +2697,7 @@ export default function MomentumApp() {
                     {dealForm.deal_type === 'wholesale' && (
                       <>
                         <div>
-                          <label className="text-slate-400 text-sm">Split With (optional)</label>
+                          <label className="text-slate-400 text-sm">Split With Partner (optional)</label>
                           <select
                             value={dealForm.split_with_user_id}
                             onChange={e => setDealForm(f => ({ ...f, split_with_user_id: e.target.value }))}
@@ -2661,19 +2710,129 @@ export default function MomentumApp() {
                           </select>
                         </div>
                         {dealForm.split_with_user_id && (
-                          <div>
-                            <label className="text-slate-400 text-sm">Split % (Primary/Partner)</label>
-                            <select
-                              value={dealForm.split_percentage}
-                              onChange={e => setDealForm(f => ({ ...f, split_percentage: e.target.value }))}
-                              className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
-                            >
-                              <option value="50">50/50</option>
-                              <option value="60">60/40</option>
-                              <option value="70">70/30</option>
-                              <option value="75">75/25</option>
-                              <option value="80">80/20</option>
-                            </select>
+                          <div className="space-y-2">
+                            <label className="text-slate-400 text-sm">Partner Split Type</label>
+                            <div className="flex gap-4">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input 
+                                  type="radio"
+                                  checked={dealForm.split_type === 'percentage'}
+                                  onChange={() => setDealForm(f => ({ ...f, split_type: 'percentage', split_amount: '' }))}
+                                  className="w-4 h-4"
+                                />
+                                <span className="text-slate-300 text-sm">Percentage</span>
+                              </label>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input 
+                                  type="radio"
+                                  checked={dealForm.split_type === 'fixed'}
+                                  onChange={() => setDealForm(f => ({ ...f, split_type: 'fixed', split_percentage: '' }))}
+                                  className="w-4 h-4"
+                                />
+                                <span className="text-slate-300 text-sm">Fixed Amount</span>
+                              </label>
+                            </div>
+                            {dealForm.split_type === 'percentage' ? (
+                              <select
+                                value={dealForm.split_percentage}
+                                onChange={e => setDealForm(f => ({ ...f, split_percentage: e.target.value }))}
+                                className="w-full bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                              >
+                                <option value="50">50/50</option>
+                                <option value="60">60/40</option>
+                                <option value="70">70/30</option>
+                                <option value="75">75/25</option>
+                                <option value="80">80/20</option>
+                              </select>
+                            ) : (
+                              <input
+                                type="number"
+                                value={dealForm.split_amount}
+                                onChange={e => setDealForm(f => ({ ...f, split_amount: e.target.value }))}
+                                className="w-full bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                                placeholder="Partner's fixed amount ($)"
+                              />
+                            )}
+                          </div>
+                        )}
+
+                        {/* Dispo Help Section */}
+                        <div className="border-t border-slate-700 pt-4 mt-2">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input 
+                              type="checkbox"
+                              checked={dealForm.dispo_help}
+                              onChange={e => setDealForm(f => ({ ...f, dispo_help: e.target.checked }))}
+                              className="w-4 h-4 rounded"
+                            />
+                            <span className="text-slate-300">🤝 Dispo Help (external wholesaler)</span>
+                          </label>
+                        </div>
+                        {dealForm.dispo_help && (
+                          <div className="space-y-3 bg-slate-700/50 p-3 rounded-lg">
+                            <div className="grid grid-cols-1 gap-3">
+                              <input
+                                type="text"
+                                value={dealForm.dispo_name}
+                                onChange={e => setDealForm(f => ({ ...f, dispo_name: e.target.value }))}
+                                className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm"
+                                placeholder="Dispo wholesaler name"
+                              />
+                              <input
+                                type="email"
+                                value={dealForm.dispo_email}
+                                onChange={e => setDealForm(f => ({ ...f, dispo_email: e.target.value }))}
+                                className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm"
+                                placeholder="Email"
+                              />
+                              <input
+                                type="tel"
+                                value={dealForm.dispo_phone}
+                                onChange={e => setDealForm(f => ({ ...f, dispo_phone: e.target.value }))}
+                                className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm"
+                                placeholder="Phone"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-slate-400 text-xs">Dispo Share</label>
+                              <div className="flex gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input 
+                                    type="radio"
+                                    checked={dealForm.dispo_share_type === 'percentage'}
+                                    onChange={() => setDealForm(f => ({ ...f, dispo_share_type: 'percentage', dispo_share_amount: '' }))}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="text-slate-300 text-sm">%</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input 
+                                    type="radio"
+                                    checked={dealForm.dispo_share_type === 'fixed'}
+                                    onChange={() => setDealForm(f => ({ ...f, dispo_share_type: 'fixed', dispo_share_percentage: '' }))}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="text-slate-300 text-sm">$</span>
+                                </label>
+                              </div>
+                              {dealForm.dispo_share_type === 'percentage' ? (
+                                <input
+                                  type="number"
+                                  value={dealForm.dispo_share_percentage}
+                                  onChange={e => setDealForm(f => ({ ...f, dispo_share_percentage: e.target.value }))}
+                                  className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm"
+                                  placeholder="Dispo percentage (e.g. 10)"
+                                />
+                              ) : (
+                                <input
+                                  type="number"
+                                  value={dealForm.dispo_share_amount}
+                                  onChange={e => setDealForm(f => ({ ...f, dispo_share_amount: e.target.value }))}
+                                  className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm"
+                                  placeholder="Dispo fixed amount ($)"
+                                />
+                              )}
+                            </div>
                           </div>
                         )}
                       </>
@@ -2872,13 +3031,23 @@ export default function MomentumApp() {
                           dealData.uc_price = parseFloat(dealForm.uc_price);
                           dealData.sold_price = parseFloat(dealForm.sold_price);
                           dealData.split_with_user_id = dealForm.split_with_user_id || null;
-                          dealData.split_percentage = dealForm.split_with_user_id ? parseFloat(dealForm.split_percentage) : null;
+                          dealData.split_type = dealForm.split_with_user_id ? dealForm.split_type : null;
+                          dealData.split_percentage = dealForm.split_with_user_id && dealForm.split_type === 'percentage' ? parseFloat(dealForm.split_percentage) : null;
+                          dealData.split_amount = dealForm.split_with_user_id && dealForm.split_type === 'fixed' ? parseFloat(dealForm.split_amount) : null;
                           dealData.deal_source = dealForm.deal_source;
                           dealData.original_list_price = dealForm.deal_source === 'on_market' && dealForm.original_list_price ? parseFloat(dealForm.original_list_price) : null;
                           dealData.had_price_reduction = dealForm.had_price_reduction;
                           dealData.original_uc_price = dealForm.had_price_reduction && dealForm.original_uc_price ? parseFloat(dealForm.original_uc_price) : null;
                           dealData.list_back_secured = dealForm.list_back_secured;
                           dealData.list_back_commission_pct = dealForm.list_back_secured && dealForm.list_back_commission_pct ? parseFloat(dealForm.list_back_commission_pct) : null;
+                          // Dispo help fields
+                          dealData.dispo_help = dealForm.dispo_help || false;
+                          dealData.dispo_name = dealForm.dispo_help ? dealForm.dispo_name : null;
+                          dealData.dispo_email = dealForm.dispo_help ? dealForm.dispo_email : null;
+                          dealData.dispo_phone = dealForm.dispo_help ? dealForm.dispo_phone : null;
+                          dealData.dispo_share_type = dealForm.dispo_help ? dealForm.dispo_share_type : null;
+                          dealData.dispo_share_percentage = dealForm.dispo_help && dealForm.dispo_share_type === 'percentage' ? parseFloat(dealForm.dispo_share_percentage) : null;
+                          dealData.dispo_share_amount = dealForm.dispo_help && dealForm.dispo_share_type === 'fixed' ? parseFloat(dealForm.dispo_share_amount) : null;
                           dealData.sale_price = null;
                           dealData.commission_amount = null;
                         } else {
@@ -2888,13 +3057,22 @@ export default function MomentumApp() {
                           dealData.uc_price = null;
                           dealData.sold_price = null;
                           dealData.split_with_user_id = null;
+                          dealData.split_type = null;
                           dealData.split_percentage = null;
+                          dealData.split_amount = null;
                           dealData.deal_source = null;
                           dealData.original_list_price = null;
                           dealData.had_price_reduction = false;
                           dealData.original_uc_price = null;
                           dealData.list_back_secured = false;
                           dealData.list_back_commission_pct = null;
+                          dealData.dispo_help = false;
+                          dealData.dispo_name = null;
+                          dealData.dispo_email = null;
+                          dealData.dispo_phone = null;
+                          dealData.dispo_share_type = null;
+                          dealData.dispo_share_percentage = null;
+                          dealData.dispo_share_amount = null;
                         }
 
                         // Handle deal save with file uploads
