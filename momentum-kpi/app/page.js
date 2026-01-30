@@ -1093,7 +1093,14 @@ export default function MomentumApp() {
     dispo_phone: '',
     dispo_share_type: 'percentage',
     dispo_share_percentage: '',
-    dispo_share_amount: ''
+    dispo_share_amount: '',
+    // New fields for realtor commission and attorney
+    realtor_commission_paid: false,
+    realtor_commission_type: 'percentage',
+    realtor_commission_percentage: '',
+    realtor_commission_amount: '',
+    attorney_used: false,
+    attorney_fee: ''
   });
   const [dealFiles, setDealFiles] = useState({
     purchase_contract: null,
@@ -2291,7 +2298,7 @@ export default function MomentumApp() {
               </div>
               {currentUser?.role === 'owner' && (
                 <button 
-                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', split_type: 'percentage', split_amount: '', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '', dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '', dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '' }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
+                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', split_type: 'percentage', split_amount: '', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '', dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '', dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '', realtor_commission_paid: false, realtor_commission_type: 'percentage', realtor_commission_percentage: '', realtor_commission_amount: '', attorney_used: false, attorney_fee: '' }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
                 >
                   + Add Deal
@@ -2450,30 +2457,52 @@ export default function MomentumApp() {
                   // Calculate deductions
                   let partnerShare = 0;
                   let dispoShare = 0;
+                  let realtorCommission = 0;
+                  let attorneyFee = 0;
                   
                   if (!isTraditional) {
+                    // Realtor commission (calculated on UC price, not revenue)
+                    if (deal.realtor_commission_paid) {
+                      if (deal.realtor_commission_type === 'fixed' && deal.realtor_commission_amount) {
+                        realtorCommission = parseFloat(deal.realtor_commission_amount);
+                      } else if (deal.realtor_commission_percentage) {
+                        realtorCommission = parseFloat(deal.uc_price || 0) * parseFloat(deal.realtor_commission_percentage) / 100;
+                      }
+                    }
+                    
+                    // Net after realtor commission
+                    const netAfterCommission = revenue - realtorCommission;
+                    
+                    // Dispo share (calculated on net after commission)
+                    if (deal.dispo_help) {
+                      if (deal.dispo_share_type === 'fixed' && deal.dispo_share_amount) {
+                        dispoShare = parseFloat(deal.dispo_share_amount);
+                      } else if (deal.dispo_share_percentage) {
+                        dispoShare = netAfterCommission * parseFloat(deal.dispo_share_percentage) / 100;
+                      }
+                    }
+                    
+                    // Attorney fee
+                    if (deal.attorney_used && deal.attorney_fee) {
+                      attorneyFee = parseFloat(deal.attorney_fee);
+                    }
+                    
+                    // Net after all deductions (before partner split)
+                    const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee;
+                    
                     // Partner split
                     if (deal.split_with_user_id) {
                       if (deal.split_type === 'fixed' && deal.split_amount) {
                         partnerShare = parseFloat(deal.split_amount);
                       } else {
                         const splitPct = parseFloat(deal.split_percentage || 50);
-                        partnerShare = revenue * (100 - splitPct) / 100;
-                      }
-                    }
-                    
-                    // Dispo share
-                    if (deal.dispo_help) {
-                      if (deal.dispo_share_type === 'fixed' && deal.dispo_share_amount) {
-                        dispoShare = parseFloat(deal.dispo_share_amount);
-                      } else if (deal.dispo_share_percentage) {
-                        dispoShare = revenue * parseFloat(deal.dispo_share_percentage) / 100;
+                        partnerShare = netBeforeSplit * (100 - splitPct) / 100;
                       }
                     }
                   }
                   
-                  // My net = revenue - partner share - dispo share
-                  const myNet = revenue - partnerShare - dispoShare;
+                  // My net = revenue - realtor commission - dispo share - attorney fee - partner share
+                  const myNet = revenue - realtorCommission - dispoShare - attorneyFee - partnerShare;
                   const splitPct = parseFloat(deal.split_percentage || 50);
 
                   return (
@@ -2594,7 +2623,13 @@ export default function MomentumApp() {
                                     dispo_phone: deal.dispo_phone || '',
                                     dispo_share_type: deal.dispo_share_type || 'percentage',
                                     dispo_share_percentage: deal.dispo_share_percentage || '',
-                                    dispo_share_amount: deal.dispo_share_amount || ''
+                                    dispo_share_amount: deal.dispo_share_amount || '',
+                                    realtor_commission_paid: deal.realtor_commission_paid || false,
+                                    realtor_commission_type: deal.realtor_commission_type || 'percentage',
+                                    realtor_commission_percentage: deal.realtor_commission_percentage || '',
+                                    realtor_commission_amount: deal.realtor_commission_amount || '',
+                                    attorney_used: deal.attorney_used || false,
+                                    attorney_fee: deal.attorney_fee || ''
                                   });
                                   setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
                                   setShowAddDeal(true);
@@ -2898,6 +2933,91 @@ export default function MomentumApp() {
                             </div>
                           </div>
                         )}
+
+                        {/* Realtor Commission Section */}
+                        <div className="border-t border-slate-700 pt-4 mt-2">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input 
+                              type="checkbox"
+                              checked={dealForm.realtor_commission_paid}
+                              onChange={e => setDealForm(f => ({ ...f, realtor_commission_paid: e.target.checked }))}
+                              className="w-4 h-4 rounded"
+                            />
+                            <span className="text-slate-300">🏠 Realtor Commission Paid</span>
+                          </label>
+                        </div>
+                        {dealForm.realtor_commission_paid && (
+                          <div className="space-y-3 bg-slate-700/50 p-3 rounded-lg">
+                            <div className="space-y-2">
+                              <label className="text-slate-400 text-xs">Commission Type (calculated on UC price)</label>
+                              <div className="flex gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input 
+                                    type="radio"
+                                    checked={dealForm.realtor_commission_type === 'percentage'}
+                                    onChange={() => setDealForm(f => ({ ...f, realtor_commission_type: 'percentage', realtor_commission_amount: '' }))}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="text-slate-300 text-sm">%</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input 
+                                    type="radio"
+                                    checked={dealForm.realtor_commission_type === 'fixed'}
+                                    onChange={() => setDealForm(f => ({ ...f, realtor_commission_type: 'fixed', realtor_commission_percentage: '' }))}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="text-slate-300 text-sm">$</span>
+                                </label>
+                              </div>
+                              {dealForm.realtor_commission_type === 'percentage' ? (
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={dealForm.realtor_commission_percentage}
+                                  onChange={e => setDealForm(f => ({ ...f, realtor_commission_percentage: e.target.value }))}
+                                  className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm"
+                                  placeholder="Commission % (e.g. 3)"
+                                />
+                              ) : (
+                                <input
+                                  type="number"
+                                  value={dealForm.realtor_commission_amount}
+                                  onChange={e => setDealForm(f => ({ ...f, realtor_commission_amount: e.target.value }))}
+                                  className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm"
+                                  placeholder="Fixed commission amount ($)"
+                                />
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Attorney Fee Section */}
+                        <div className="border-t border-slate-700 pt-4 mt-2">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input 
+                              type="checkbox"
+                              checked={dealForm.attorney_used}
+                              onChange={e => setDealForm(f => ({ ...f, attorney_used: e.target.checked }))}
+                              className="w-4 h-4 rounded"
+                            />
+                            <span className="text-slate-300">⚖️ Attorney Used</span>
+                          </label>
+                        </div>
+                        {dealForm.attorney_used && (
+                          <div className="space-y-3 bg-slate-700/50 p-3 rounded-lg">
+                            <div>
+                              <label className="text-slate-400 text-xs">Attorney Fee ($)</label>
+                              <input
+                                type="number"
+                                value={dealForm.attorney_fee}
+                                onChange={e => setDealForm(f => ({ ...f, attorney_fee: e.target.value }))}
+                                className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm mt-1"
+                                placeholder="Attorney fee amount ($)"
+                              />
+                            </div>
+                          </div>
+                        )}
                       </>
                     )}
 
@@ -3111,6 +3231,14 @@ export default function MomentumApp() {
                           dealData.dispo_share_type = dealForm.dispo_help ? dealForm.dispo_share_type : null;
                           dealData.dispo_share_percentage = dealForm.dispo_help && dealForm.dispo_share_type === 'percentage' ? parseFloat(dealForm.dispo_share_percentage) : null;
                           dealData.dispo_share_amount = dealForm.dispo_help && dealForm.dispo_share_type === 'fixed' ? parseFloat(dealForm.dispo_share_amount) : null;
+                          // Realtor commission fields (commission % calculated on UC price)
+                          dealData.realtor_commission_paid = dealForm.realtor_commission_paid || false;
+                          dealData.realtor_commission_type = dealForm.realtor_commission_paid ? dealForm.realtor_commission_type : null;
+                          dealData.realtor_commission_percentage = dealForm.realtor_commission_paid && dealForm.realtor_commission_type === 'percentage' ? parseFloat(dealForm.realtor_commission_percentage) : null;
+                          dealData.realtor_commission_amount = dealForm.realtor_commission_paid && dealForm.realtor_commission_type === 'fixed' ? parseFloat(dealForm.realtor_commission_amount) : null;
+                          // Attorney fee fields
+                          dealData.attorney_used = dealForm.attorney_used || false;
+                          dealData.attorney_fee = dealForm.attorney_used && dealForm.attorney_fee ? parseFloat(dealForm.attorney_fee) : null;
                           dealData.sale_price = null;
                           dealData.commission_amount = null;
                         } else {
@@ -3136,6 +3264,12 @@ export default function MomentumApp() {
                           dealData.dispo_share_type = null;
                           dealData.dispo_share_percentage = null;
                           dealData.dispo_share_amount = null;
+                          dealData.realtor_commission_paid = false;
+                          dealData.realtor_commission_type = null;
+                          dealData.realtor_commission_percentage = null;
+                          dealData.realtor_commission_amount = null;
+                          dealData.attorney_used = false;
+                          dealData.attorney_fee = null;
                         }
 
                         // Handle deal save with file uploads
