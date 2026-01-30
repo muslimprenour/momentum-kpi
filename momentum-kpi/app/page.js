@@ -139,6 +139,7 @@ const db = {
   },
   kpis: {
     getByOrg: (orgId, userIds) => supabaseFetch(`daily_kpis?user_id=in.(${userIds.join(',')})&select=*`),
+    getByUserAndDate: (userId, date) => supabaseFetch(`daily_kpis?user_id=eq.${userId}&date=eq.${date}&select=*`),
     upsert: (kpi) => supabaseFetch('daily_kpis?on_conflict=user_id,date', { method: 'POST', body: [kpi], prefer: 'return=representation,resolution=merge-duplicates' }),
   },
   pendingOffers: {
@@ -3108,6 +3109,48 @@ export default function MomentumApp() {
                             if (Object.keys(fileUpdates).length > 0) {
                               await db.deals.update(dealId, fileUpdates);
                             }
+                          }
+                          
+                          // Auto-update KPI deals_closed counter for new deals (not edits)
+                          if (!editingDeal && dealForm.deal_type === 'wholesale') {
+                            const dealDate = dealForm.closed_date;
+                            // Update primary user's KPI
+                            const primaryUserId = currentUser.id;
+                            const { data: primaryKpi } = await db.kpis.getByUserAndDate(primaryUserId, dealDate);
+                            const primaryCurrent = primaryKpi?.[0]?.deals_closed || 0;
+                            await db.kpis.upsert({ 
+                              user_id: primaryUserId, 
+                              date: dealDate, 
+                              deals_closed: primaryCurrent + 1,
+                              offers: primaryKpi?.[0]?.offers || 0,
+                              new_agents: primaryKpi?.[0]?.new_agents || 0,
+                              follow_ups: primaryKpi?.[0]?.follow_ups || 0,
+                              phone_calls: primaryKpi?.[0]?.phone_calls || 0,
+                              deals_under_contract: primaryKpi?.[0]?.deals_under_contract || 0,
+                              list_backs: primaryKpi?.[0]?.list_backs || 0,
+                              notes: primaryKpi?.[0]?.notes || ''
+                            });
+                            
+                            // Update partner's KPI if split
+                            if (dealForm.split_with_user_id) {
+                              const partnerId = dealForm.split_with_user_id;
+                              const { data: partnerKpi } = await db.kpis.getByUserAndDate(partnerId, dealDate);
+                              const partnerCurrent = partnerKpi?.[0]?.deals_closed || 0;
+                              await db.kpis.upsert({ 
+                                user_id: partnerId, 
+                                date: dealDate, 
+                                deals_closed: partnerCurrent + 1,
+                                offers: partnerKpi?.[0]?.offers || 0,
+                                new_agents: partnerKpi?.[0]?.new_agents || 0,
+                                follow_ups: partnerKpi?.[0]?.follow_ups || 0,
+                                phone_calls: partnerKpi?.[0]?.phone_calls || 0,
+                                deals_under_contract: partnerKpi?.[0]?.deals_under_contract || 0,
+                                list_backs: partnerKpi?.[0]?.list_backs || 0,
+                                notes: partnerKpi?.[0]?.notes || ''
+                              });
+                            }
+                            // Reload KPIs to reflect changes
+                            loadTeamKPIs();
                           }
                           
                           setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
