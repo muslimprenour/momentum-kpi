@@ -87,7 +87,9 @@ const DEFAULT_KPI_GOALS = {
   daily_new_agents: 300,
   daily_follow_ups: 500,
   weekly_contracts: 2,
-  monthly_closed: 5
+  monthly_closed: 5,
+  yearly_revenue_goal: 500000,
+  yearly_personal_net_goal: 250000
 };
 
 const AVATAR_EMOJIS = [
@@ -2313,6 +2315,66 @@ export default function MomentumApp() {
               </div>
             </div>
 
+            {/* Yearly Goals Progress - Owner Only */}
+            {currentUser?.role === 'owner' && dealsYear === new Date().getFullYear() && (() => {
+              const goals = getGoals();
+              const yearDeals = deals.filter(d => d.year === dealsYear);
+              const totalRevenue = yearDeals.reduce((sum, d) => sum + (parseFloat(d.revenue) || 0), 0);
+              
+              // Calculate total personal net (revenue - partner splits - dispo shares)
+              const totalPersonalNet = yearDeals.reduce((sum, d) => {
+                let net = parseFloat(d.revenue) || 0;
+                // Subtract partner split
+                if (d.split_with_user_id) {
+                  if (d.split_type === 'fixed' && d.split_amount) {
+                    net -= parseFloat(d.split_amount);
+                  } else if (d.split_percentage) {
+                    net -= net * (100 - parseFloat(d.split_percentage)) / 100;
+                  }
+                }
+                // Subtract dispo share
+                if (d.dispo_help) {
+                  if (d.dispo_share_type === 'fixed' && d.dispo_share_amount) {
+                    net -= parseFloat(d.dispo_share_amount);
+                  } else if (d.dispo_share_percentage) {
+                    net -= (parseFloat(d.revenue) || 0) * parseFloat(d.dispo_share_percentage) / 100;
+                  }
+                }
+                return sum + net;
+              }, 0);
+              
+              const revenueGoal = goals.yearly_revenue_goal || 500000;
+              const netGoal = goals.yearly_personal_net_goal || 250000;
+              const revenuePct = Math.min((totalRevenue / revenueGoal) * 100, 100);
+              const netPct = Math.min((totalPersonalNet / netGoal) * 100, 100);
+              
+              return (
+                <div className="bg-gradient-to-r from-amber-900/30 to-yellow-900/30 rounded-xl p-4 border border-amber-700/50">
+                  <h3 className="text-amber-400 font-bold mb-4">🎯 {dealsYear} Yearly Goals</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-slate-400 text-xs mb-1">Company Revenue</p>
+                      <p className="text-2xl font-bold text-green-400">${totalRevenue.toLocaleString()}</p>
+                      <p className="text-slate-500 text-xs">of ${revenueGoal.toLocaleString()} goal</p>
+                      <div className="w-full bg-slate-700 rounded-full h-2 mt-2">
+                        <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${revenuePct}%` }} />
+                      </div>
+                      <p className="text-slate-400 text-xs mt-1">{revenuePct.toFixed(1)}%</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 text-xs mb-1">Personal Net</p>
+                      <p className="text-2xl font-bold text-amber-400">${totalPersonalNet.toLocaleString()}</p>
+                      <p className="text-slate-500 text-xs">of ${netGoal.toLocaleString()} goal</p>
+                      <div className="w-full bg-slate-700 rounded-full h-2 mt-2">
+                        <div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${netPct}%` }} />
+                      </div>
+                      <p className="text-slate-400 text-xs mt-1">{netPct.toFixed(1)}%</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Summary Cards */}
             {(() => {
               const userDeals = currentUser?.role === 'owner' 
@@ -3241,6 +3303,19 @@ export default function MomentumApp() {
                       <input type="number" value={kpiGoals[key]} onChange={e => setKpiGoals(prev => ({ ...prev, [key]: parseInt(e.target.value) || 0 }))} className="w-full bg-slate-600 text-white rounded px-3 py-2 mt-1" />
                     </div>
                   ))}
+                </div>
+                <div className="border-t border-slate-600 mt-4 pt-4">
+                  <h4 className="text-amber-400 font-semibold mb-3">💰 Yearly Revenue Goals (Owner Only)</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-slate-400 text-xs">Yearly Company Revenue Goal ($)</label>
+                      <input type="number" value={kpiGoals.yearly_revenue_goal || 500000} onChange={e => setKpiGoals(prev => ({ ...prev, yearly_revenue_goal: parseInt(e.target.value) || 0 }))} className="w-full bg-slate-600 text-white rounded px-3 py-2 mt-1" />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-xs">Yearly Personal Net Goal ($)</label>
+                      <input type="number" value={kpiGoals.yearly_personal_net_goal || 250000} onChange={e => setKpiGoals(prev => ({ ...prev, yearly_personal_net_goal: parseInt(e.target.value) || 0 }))} className="w-full bg-slate-600 text-white rounded px-3 py-2 mt-1" />
+                    </div>
+                  </div>
                 </div>
                 <button onClick={handleKpiGoalsSave} disabled={kpiSaving} className="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-50">{kpiSaving ? 'Saving...' : '💾 Save KPI Goals'}</button>
               </div>
