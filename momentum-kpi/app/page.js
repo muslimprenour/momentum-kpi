@@ -2427,6 +2427,20 @@ export default function MomentumApp() {
                               📉 UC reduced: ${parseFloat(deal.original_uc_price).toLocaleString()} → ${parseFloat(deal.uc_price).toLocaleString()}
                             </p>
                           )}
+                          {/* Document Links - visible to all */}
+                          {(deal.purchase_contract_url || deal.assignment_contract_url || deal.hud_url) && (
+                            <div className="flex gap-3 mt-2 text-xs">
+                              {deal.purchase_contract_url && (
+                                <a href={deal.purchase_contract_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">📄 P&S</a>
+                              )}
+                              {deal.assignment_contract_url && (
+                                <a href={deal.assignment_contract_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">📄 Assignment</a>
+                              )}
+                              {deal.hud_url && (
+                                <a href={deal.hud_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">📄 HUD</a>
+                              )}
+                            </div>
+                          )}
                           {primaryUser && currentUser?.role === 'owner' && (
                             <p className="text-slate-500 text-xs mt-1">
                               Primary: {primaryUser.display_name || primaryUser.name}
