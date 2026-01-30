@@ -3078,38 +3078,46 @@ export default function MomentumApp() {
                         // Handle deal save with file uploads
                         let dealId = editingDeal?.id;
                         
-                        if (editingDeal) {
-                          await db.deals.update(editingDeal.id, dealData);
-                        } else {
-                          const result = await db.deals.create(dealData);
-                          if (result && result[0]) dealId = result[0].id;
+                        try {
+                          if (editingDeal) {
+                            const updateResult = await db.deals.update(editingDeal.id, dealData);
+                            if (updateResult?.error) throw new Error(updateResult.error.message || 'Update failed');
+                          } else {
+                            const result = await db.deals.create(dealData);
+                            console.log('Create result:', result);
+                            if (result?.error) throw new Error(result.error.message || 'Create failed');
+                            if (result && result[0]) dealId = result[0].id;
+                          }
+                          
+                          // Upload any new files
+                          if (dealId) {
+                            const fileUpdates = {};
+                            if (dealFiles.purchase_contract) {
+                              const url = await uploadDealDocument(dealFiles.purchase_contract, dealId, 'purchase_contract');
+                              if (url) fileUpdates.purchase_contract_url = url;
+                            }
+                            if (dealFiles.assignment_contract) {
+                              const url = await uploadDealDocument(dealFiles.assignment_contract, dealId, 'assignment_contract');
+                              if (url) fileUpdates.assignment_contract_url = url;
+                            }
+                            if (dealFiles.hud) {
+                              const url = await uploadDealDocument(dealFiles.hud, dealId, 'hud');
+                              if (url) fileUpdates.hud_url = url;
+                            }
+                            // Update deal with file URLs if any were uploaded
+                            if (Object.keys(fileUpdates).length > 0) {
+                              await db.deals.update(dealId, fileUpdates);
+                            }
+                          }
+                          
+                          setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
+                          setShowAddDeal(false);
+                          setEditingDeal(null);
+                          loadDeals();
+                        } catch (error) {
+                          console.error('Deal save error:', error);
+                          alert('Failed to save deal: ' + error.message);
                         }
-                        
-                        // Upload any new files
-                        if (dealId) {
-                          const fileUpdates = {};
-                          if (dealFiles.purchase_contract) {
-                            const url = await uploadDealDocument(dealFiles.purchase_contract, dealId, 'purchase_contract');
-                            if (url) fileUpdates.purchase_contract_url = url;
-                          }
-                          if (dealFiles.assignment_contract) {
-                            const url = await uploadDealDocument(dealFiles.assignment_contract, dealId, 'assignment_contract');
-                            if (url) fileUpdates.assignment_contract_url = url;
-                          }
-                          if (dealFiles.hud) {
-                            const url = await uploadDealDocument(dealFiles.hud, dealId, 'hud');
-                            if (url) fileUpdates.hud_url = url;
-                          }
-                          // Update deal with file URLs if any were uploaded
-                          if (Object.keys(fileUpdates).length > 0) {
-                            await db.deals.update(dealId, fileUpdates);
-                          }
-                        }
-                        
-                        setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
-                        setShowAddDeal(false);
-                        setEditingDeal(null);
-                        loadDeals();
                       }}
                       className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg"
                     >
