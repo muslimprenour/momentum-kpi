@@ -2427,8 +2427,8 @@ export default function MomentumApp() {
                               📉 UC reduced: ${parseFloat(deal.original_uc_price).toLocaleString()} → ${parseFloat(deal.uc_price).toLocaleString()}
                             </p>
                           )}
-                          {/* Document Links - visible to all */}
-                          {(deal.purchase_contract_url || deal.assignment_contract_url || deal.hud_url) && (
+                          {/* Document Links - owner only */}
+                          {currentUser?.role === 'owner' && (deal.purchase_contract_url || deal.assignment_contract_url || deal.hud_url) && (
                             <div className="flex gap-3 mt-2 text-xs">
                               {deal.purchase_contract_url && (
                                 <a href={deal.purchase_contract_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">📄 P&S</a>
