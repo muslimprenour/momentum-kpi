@@ -1052,6 +1052,9 @@ export default function MomentumApp() {
   const fileInputRef = useRef(null);
   const [kpiGoals, setKpiGoals] = useState(DEFAULT_KPI_GOALS);
   const [kpiSaving, setKpiSaving] = useState(false);
+  const [personalGoals, setPersonalGoals] = useState(null); // User's personal goal overrides
+  const [personalGoalsSaving, setPersonalGoalsSaving] = useState(false);
+  const [showPersonalGoalsEditor, setShowPersonalGoalsEditor] = useState(false);
   const [userNotes, setUserNotes] = useState([]);
   const [vipAgents, setVipAgents] = useState([]);
   const [customInviteCode, setCustomInviteCode] = useState('');
@@ -3346,7 +3349,7 @@ export default function MomentumApp() {
                               });
                             }
                             // Reload KPIs to reflect changes
-                            loadTeamKPIs();
+                            loadTeamData();
                           }
                           
                           setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
