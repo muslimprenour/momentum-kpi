@@ -1104,7 +1104,11 @@ export default function MomentumApp() {
     realtor_commission_percentage: '',
     realtor_commission_amount: '',
     attorney_used: false,
-    attorney_fee: ''
+    attorney_fee: '',
+    // Agent info (auto-adds to VIP agents)
+    agent_name: '',
+    agent_email: '',
+    agent_phone: ''
   });
   const [dealFiles, setDealFiles] = useState({
     purchase_contract: null,
@@ -2368,7 +2372,7 @@ export default function MomentumApp() {
               </div>
               {currentUser?.role === 'owner' && (
                 <button 
-                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', split_type: 'percentage', split_amount: '', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '', dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '', dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '', realtor_commission_paid: false, realtor_commission_type: 'percentage', realtor_commission_percentage: '', realtor_commission_amount: '', attorney_used: false, attorney_fee: '' }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
+                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', split_type: 'percentage', split_amount: '', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '', dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '', dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '', realtor_commission_paid: false, realtor_commission_type: 'percentage', realtor_commission_percentage: '', realtor_commission_amount: '', attorney_used: false, attorney_fee: '', agent_name: '', agent_email: '', agent_phone: '' }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
                 >
                   + Add Deal
@@ -2860,7 +2864,10 @@ export default function MomentumApp() {
                                     realtor_commission_percentage: deal.realtor_commission_percentage || '',
                                     realtor_commission_amount: deal.realtor_commission_amount || '',
                                     attorney_used: deal.attorney_used || false,
-                                    attorney_fee: deal.attorney_fee || ''
+                                    attorney_fee: deal.attorney_fee || '',
+                                    agent_name: deal.agent_name || '',
+                                    agent_email: deal.agent_email || '',
+                                    agent_phone: deal.agent_phone || ''
                                   });
                                   setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
                                   setShowAddDeal(true);
@@ -3252,6 +3259,45 @@ export default function MomentumApp() {
                       </>
                     )}
 
+                    {/* Agent Info Section - Auto-adds to VIP */}
+                    <div className="border-t border-slate-700 pt-4 mt-2">
+                      <label className="text-slate-400 text-sm block mb-2">⭐ Agent Info <span className="text-slate-500 text-xs">(auto-adds to VIP Agents)</span></label>
+                      <div className="space-y-3 bg-slate-700/50 p-3 rounded-lg">
+                        <div>
+                          <label className="text-slate-400 text-xs">Agent Name</label>
+                          <input
+                            type="text"
+                            value={dealForm.agent_name}
+                            onChange={e => setDealForm(f => ({ ...f, agent_name: e.target.value }))}
+                            className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm mt-1"
+                            placeholder="Agent's full name"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-slate-400 text-xs">Email</label>
+                            <input
+                              type="email"
+                              value={dealForm.agent_email}
+                              onChange={e => setDealForm(f => ({ ...f, agent_email: e.target.value }))}
+                              className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm mt-1"
+                              placeholder="agent@email.com"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-slate-400 text-xs">Phone</label>
+                            <input
+                              type="tel"
+                              value={dealForm.agent_phone}
+                              onChange={e => setDealForm(f => ({ ...f, agent_phone: e.target.value }))}
+                              className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm mt-1"
+                              placeholder="(555) 123-4567"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="text-slate-400 text-sm">Notes</label>
                       <textarea 
@@ -3578,6 +3624,22 @@ export default function MomentumApp() {
                             }
                             // Reload KPIs to reflect changes
                             loadTeamData();
+                          }
+                          
+                          // Auto-add agent to VIP agents if agent info provided
+                          if (dealForm.agent_name && !editingDeal) {
+                            try {
+                              await db.vipAgents.create({
+                                user_id: currentUser.id,
+                                name: dealForm.agent_name,
+                                email: dealForm.agent_email || null,
+                                phone: dealForm.agent_phone || null,
+                                deal_closed: dealForm.property_address,
+                                notes: `Auto-added from deal: ${dealForm.property_address}`
+                              });
+                            } catch (vipErr) {
+                              console.log('Could not auto-add VIP agent:', vipErr);
+                            }
                           }
                           
                           setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
