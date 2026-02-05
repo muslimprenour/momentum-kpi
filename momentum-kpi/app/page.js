@@ -1067,7 +1067,8 @@ export default function MomentumApp() {
   const [dealsYear, setDealsYear] = useState(new Date().getFullYear());
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [editingDeal, setEditingDeal] = useState(null);
-  const [showRevenueOnHome, setShowRevenueOnHome] = useState(true); // User preference for showing revenue on home
+  const [showRevenueOnHome, setShowRevenueOnHome] = useState(true); // User preference for showing widget on home
+  const [homeWidgetMode, setHomeWidgetMode] = useState('revenue'); // 'revenue' or 'net'
   const [dealForm, setDealForm] = useState({
     property_address: '',
     uc_price: '',
@@ -1983,55 +1984,107 @@ export default function MomentumApp() {
               <button onClick={openProfileModal} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium">✏️ Edit Profile</button>
             </div>
 
-            {/* Combined Revenue Widget - Only shown if user has enabled it */}
+            {/* Combined Revenue/Net Widget - Only shown if user has enabled it */}
             {showRevenueOnHome && (() => {
               const currentYear = new Date().getFullYear();
+              const yearDeals = deals.filter(d => new Date(d.closed_date).getFullYear() === currentYear);
+              const totalDeals = yearDeals.length;
               
-              // Wholesale deals
-              const wholesaleDeals = deals.filter(d => {
-                const dealYear = new Date(d.closed_date).getFullYear();
-                return dealYear === currentYear && d.deal_type !== 'traditional';
-              });
-              const wholesaleRevenue = wholesaleDeals.reduce((sum, d) => sum + parseFloat(d.revenue || 0), 0);
+              // Calculate total revenue
+              const totalRevenue = yearDeals.reduce((sum, d) => {
+                if (d.deal_type === 'traditional') {
+                  return sum + parseFloat(d.commission_amount || 0);
+                }
+                return sum + parseFloat(d.revenue || 0);
+              }, 0);
               
-              // Traditional deals
-              const traditionalDeals = deals.filter(d => {
-                const dealYear = new Date(d.closed_date).getFullYear();
-                return dealYear === currentYear && d.deal_type === 'traditional';
-              });
-              const traditionalRevenue = traditionalDeals.reduce((sum, d) => sum + parseFloat(d.commission_amount || 0), 0);
+              // Calculate personal net (same logic as yearly goals)
+              const totalNet = yearDeals.reduce((sum, d) => {
+                const rev = parseFloat(d.revenue || 0);
+                const isTraditional = d.deal_type === 'traditional';
+                
+                if (isTraditional) {
+                  const commission = parseFloat(d.commission_amount || 0);
+                  if (d.split_with_user_id) {
+                    const splitPct = parseFloat(d.split_percentage || 50);
+                    const partnerShare = d.split_type === 'fixed' 
+                      ? parseFloat(d.split_amount || 0) 
+                      : commission * (100 - splitPct) / 100;
+                    return sum + (commission - partnerShare);
+                  }
+                  return sum + commission;
+                }
+                
+                let realtorCommission = 0;
+                let dispoShare = 0;
+                let attorneyFee = 0;
+                
+                if (d.realtor_commission_paid) {
+                  if (d.realtor_commission_type === 'fixed' && d.realtor_commission_amount) {
+                    realtorCommission = parseFloat(d.realtor_commission_amount);
+                  } else if (d.realtor_commission_percentage) {
+                    realtorCommission = parseFloat(d.uc_price || 0) * parseFloat(d.realtor_commission_percentage) / 100;
+                  }
+                }
+                
+                const netAfterCommission = rev - realtorCommission;
+                
+                if (d.dispo_help) {
+                  if (d.dispo_share_type === 'fixed' && d.dispo_share_amount) {
+                    dispoShare = parseFloat(d.dispo_share_amount);
+                  } else if (d.dispo_share_percentage) {
+                    dispoShare = netAfterCommission * parseFloat(d.dispo_share_percentage) / 100;
+                  }
+                }
+                
+                if (d.attorney_used && d.attorney_fee) {
+                  attorneyFee = parseFloat(d.attorney_fee);
+                }
+                
+                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee;
+                
+                if (d.split_with_user_id) {
+                  const splitPct = parseFloat(d.split_percentage || 50);
+                  const partnerShare = d.split_type === 'fixed' 
+                    ? parseFloat(d.split_amount || 0) 
+                    : netBeforeSplit * (100 - splitPct) / 100;
+                  return sum + (netBeforeSplit - partnerShare);
+                }
+                
+                return sum + netBeforeSplit;
+              }, 0);
               
-              // Total
-              const totalRevenue = wholesaleRevenue + traditionalRevenue;
-              const totalDeals = wholesaleDeals.length + traditionalDeals.length;
-              const hasBoth = wholesaleRevenue > 0 && traditionalRevenue > 0;
+              const showNet = homeWidgetMode === 'net';
+              const displayValue = showNet ? totalNet : totalRevenue;
 
               return (
                 <div 
                   onClick={() => setCurrentTab('deals')}
-                  className="bg-gradient-to-br from-green-900/40 via-emerald-900/30 to-teal-900/40 rounded-2xl md:rounded-xl p-4 border border-green-700/30 cursor-pointer hover:border-green-600/50 transition"
+                  className={`bg-gradient-to-br ${showNet ? 'from-amber-900/40 via-orange-900/30 to-yellow-900/40 border-amber-700/30 hover:border-amber-600/50' : 'from-green-900/40 via-emerald-900/30 to-teal-900/40 border-green-700/30 hover:border-green-600/50'} rounded-2xl md:rounded-xl p-4 border cursor-pointer transition`}
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <p className="text-green-400/70 text-xs uppercase tracking-wide">YTD Revenue {currentYear}</p>
-                      <p className="text-3xl font-black text-green-400">${totalRevenue.toLocaleString()}</p>
-                      <p className="text-green-400/50 text-sm">{totalDeals} deals closed</p>
+                      <p className={`${showNet ? 'text-amber-400/70' : 'text-green-400/70'} text-xs uppercase tracking-wide`}>
+                        {showNet ? 'YTD Personal Net' : 'YTD Revenue'} {currentYear}
+                      </p>
+                      <p className={`text-3xl font-black ${showNet ? 'text-amber-400' : 'text-green-400'}`}>${displayValue.toLocaleString()}</p>
+                      <p className={`${showNet ? 'text-amber-400/50' : 'text-green-400/50'} text-sm`}>{totalDeals} deals closed</p>
                       
-                      {/* Breakdown - shows when there's any revenue */}
-                      {totalRevenue > 0 && (
-                        <div className="mt-3 pt-3 border-t border-green-700/30 grid grid-cols-2 gap-2">
+                      {/* Show both values */}
+                      {totalDeals > 0 && (
+                        <div className={`mt-3 pt-3 border-t ${showNet ? 'border-amber-700/30' : 'border-green-700/30'} grid grid-cols-2 gap-2`}>
                           <div>
-                            <p className="text-green-400/50 text-xs">📦 Wholesale</p>
-                            <p className="text-green-300 font-semibold">${wholesaleRevenue.toLocaleString()}</p>
+                            <p className="text-green-400/50 text-xs">💰 Revenue</p>
+                            <p className="text-green-300 font-semibold">${totalRevenue.toLocaleString()}</p>
                           </div>
                           <div>
-                            <p className="text-blue-400/50 text-xs">🏠 Traditional</p>
-                            <p className="text-blue-300 font-semibold">${traditionalRevenue.toLocaleString()}</p>
+                            <p className="text-amber-400/50 text-xs">💵 Net</p>
+                            <p className="text-amber-300 font-semibold">${totalNet.toLocaleString()}</p>
                           </div>
                         </div>
                       )}
                     </div>
-                    <div className="text-4xl">💰</div>
+                    <div className="text-4xl">{showNet ? '💵' : '💰'}</div>
                   </div>
                 </div>
               );
@@ -2313,8 +2366,8 @@ export default function MomentumApp() {
             <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white font-medium">Default to Revenue View</p>
-                  <p className="text-slate-400 text-sm">Show Total Revenue instead of Personal Net (tap card to toggle)</p>
+                  <p className="text-white font-medium">Show YTD Widget on Home</p>
+                  <p className="text-slate-400 text-sm">Display the yearly revenue/net widget on home page</p>
                 </div>
                 <button
                   onClick={toggleShowRevenueOnHome}
@@ -2323,6 +2376,20 @@ export default function MomentumApp() {
                   <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${showRevenueOnHome ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
+              {showRevenueOnHome && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-700">
+                  <div>
+                    <p className="text-white font-medium">Show Personal Net</p>
+                    <p className="text-slate-400 text-sm">Display Net instead of Revenue on home widget</p>
+                  </div>
+                  <button
+                    onClick={() => setHomeWidgetMode(homeWidgetMode === 'net' ? 'revenue' : 'net')}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${homeWidgetMode === 'net' ? 'bg-amber-600' : 'bg-slate-600'}`}
+                  >
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${homeWidgetMode === 'net' ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Yearly Goals Progress - Owner Only */}
