@@ -1990,13 +1990,16 @@ export default function MomentumApp() {
               const yearDeals = deals.filter(d => new Date(d.closed_date).getFullYear() === currentYear);
               const totalDeals = yearDeals.length;
               
-              // Calculate total revenue
-              const totalRevenue = yearDeals.reduce((sum, d) => {
-                if (d.deal_type === 'traditional') {
-                  return sum + parseFloat(d.commission_amount || 0);
-                }
-                return sum + parseFloat(d.revenue || 0);
-              }, 0);
+              // Wholesale deals
+              const wholesaleDeals = yearDeals.filter(d => d.deal_type !== 'traditional');
+              const wholesaleRevenue = wholesaleDeals.reduce((sum, d) => sum + parseFloat(d.revenue || 0), 0);
+              
+              // Traditional deals
+              const traditionalDeals = yearDeals.filter(d => d.deal_type === 'traditional');
+              const traditionalRevenue = traditionalDeals.reduce((sum, d) => sum + parseFloat(d.commission_amount || 0), 0);
+              
+              // Total revenue
+              const totalRevenue = wholesaleRevenue + traditionalRevenue;
               
               // Calculate personal net (same logic as yearly goals)
               const totalNet = yearDeals.reduce((sum, d) => {
@@ -2060,26 +2063,26 @@ export default function MomentumApp() {
               return (
                 <div 
                   onClick={() => setCurrentTab('deals')}
-                  className={`bg-gradient-to-br ${showNet ? 'from-amber-900/40 via-orange-900/30 to-yellow-900/40 border-amber-700/30 hover:border-amber-600/50' : 'from-green-900/40 via-emerald-900/30 to-teal-900/40 border-green-700/30 hover:border-green-600/50'} rounded-2xl md:rounded-xl p-4 border cursor-pointer transition`}
+                  className={`bg-gradient-to-br ${showNet ? 'from-green-900/40 via-emerald-900/30 to-teal-900/40 border-green-700/30 hover:border-green-600/50' : 'from-amber-900/40 via-orange-900/30 to-yellow-900/40 border-amber-700/30 hover:border-amber-600/50'} rounded-2xl md:rounded-xl p-4 border cursor-pointer transition`}
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <p className={`${showNet ? 'text-amber-400/70' : 'text-green-400/70'} text-xs uppercase tracking-wide`}>
+                      <p className={`${showNet ? 'text-green-400/70' : 'text-amber-400/70'} text-xs uppercase tracking-wide`}>
                         {showNet ? 'YTD Personal Net' : 'YTD Revenue'} {currentYear}
                       </p>
-                      <p className={`text-3xl font-black ${showNet ? 'text-amber-400' : 'text-green-400'}`}>${displayValue.toLocaleString()}</p>
-                      <p className={`${showNet ? 'text-amber-400/50' : 'text-green-400/50'} text-sm`}>{totalDeals} deals closed</p>
+                      <p className={`text-3xl font-black ${showNet ? 'text-green-400' : 'text-amber-400'}`}>${displayValue.toLocaleString()}</p>
+                      <p className={`${showNet ? 'text-green-400/50' : 'text-amber-400/50'} text-sm`}>{totalDeals} deals closed</p>
                       
-                      {/* Show both values */}
+                      {/* Breakdown */}
                       {totalDeals > 0 && (
-                        <div className={`mt-3 pt-3 border-t ${showNet ? 'border-amber-700/30' : 'border-green-700/30'} grid grid-cols-2 gap-2`}>
+                        <div className={`mt-3 pt-3 border-t ${showNet ? 'border-green-700/30' : 'border-amber-700/30'} grid grid-cols-2 gap-2`}>
                           <div>
-                            <p className="text-green-400/50 text-xs">💰 Revenue</p>
-                            <p className="text-green-300 font-semibold">${totalRevenue.toLocaleString()}</p>
+                            <p className="text-orange-400/50 text-xs">📦 Wholesale</p>
+                            <p className="text-orange-300 font-semibold">${wholesaleRevenue.toLocaleString()}</p>
                           </div>
                           <div>
-                            <p className="text-amber-400/50 text-xs">💵 Net</p>
-                            <p className="text-amber-300 font-semibold">${totalNet.toLocaleString()}</p>
+                            <p className="text-blue-400/50 text-xs">🏠 Traditional</p>
+                            <p className="text-blue-300 font-semibold">${traditionalRevenue.toLocaleString()}</p>
                           </div>
                         </div>
                       )}
