@@ -2331,26 +2331,77 @@ export default function MomentumApp() {
               const yearDeals = deals.filter(d => d.year === dealsYear);
               const totalRevenue = yearDeals.reduce((sum, d) => sum + (parseFloat(d.revenue) || 0), 0);
               
-              // Calculate total personal net (revenue - partner splits - dispo shares)
+              // Calculate totals for each expense category
+              let totalPartnerPaid = 0;
+              let totalDispoPaid = 0;
+              let totalAgentCommissions = 0;
+              let totalAttorneyFees = 0;
+              
+              // Calculate total personal net (revenue - ALL expenses)
               const totalPersonalNet = yearDeals.reduce((sum, d) => {
-                let net = parseFloat(d.revenue) || 0;
-                // Subtract partner split
-                if (d.split_with_user_id) {
-                  if (d.split_type === 'fixed' && d.split_amount) {
-                    net -= parseFloat(d.split_amount);
-                  } else if (d.split_percentage) {
-                    net -= net * (100 - parseFloat(d.split_percentage)) / 100;
+                const rev = parseFloat(d.revenue) || 0;
+                const isTraditional = d.deal_type === 'traditional';
+                
+                if (isTraditional) {
+                  // For traditional deals, commission is the net
+                  const commission = parseFloat(d.commission_amount || 0);
+                  if (d.split_with_user_id) {
+                    const splitPct = parseFloat(d.split_percentage || 50);
+                    const partnerShare = d.split_type === 'fixed' 
+                      ? parseFloat(d.split_amount || 0) 
+                      : commission * (100 - splitPct) / 100;
+                    totalPartnerPaid += partnerShare;
+                    return sum + (commission - partnerShare);
+                  }
+                  return sum + commission;
+                }
+                
+                // Wholesale deals
+                let realtorCommission = 0;
+                let dispoShare = 0;
+                let attorneyFee = 0;
+                
+                // Realtor commission
+                if (d.realtor_commission_paid) {
+                  if (d.realtor_commission_type === 'fixed' && d.realtor_commission_amount) {
+                    realtorCommission = parseFloat(d.realtor_commission_amount);
+                  } else if (d.realtor_commission_percentage) {
+                    realtorCommission = parseFloat(d.uc_price || 0) * parseFloat(d.realtor_commission_percentage) / 100;
                   }
                 }
-                // Subtract dispo share
+                totalAgentCommissions += realtorCommission;
+                
+                const netAfterCommission = rev - realtorCommission;
+                
+                // Dispo share
                 if (d.dispo_help) {
                   if (d.dispo_share_type === 'fixed' && d.dispo_share_amount) {
-                    net -= parseFloat(d.dispo_share_amount);
+                    dispoShare = parseFloat(d.dispo_share_amount);
                   } else if (d.dispo_share_percentage) {
-                    net -= (parseFloat(d.revenue) || 0) * parseFloat(d.dispo_share_percentage) / 100;
+                    dispoShare = netAfterCommission * parseFloat(d.dispo_share_percentage) / 100;
                   }
                 }
-                return sum + net;
+                totalDispoPaid += dispoShare;
+                
+                // Attorney fee
+                if (d.attorney_used && d.attorney_fee) {
+                  attorneyFee = parseFloat(d.attorney_fee);
+                }
+                totalAttorneyFees += attorneyFee;
+                
+                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee;
+                
+                // Partner split
+                if (d.split_with_user_id) {
+                  const splitPct = parseFloat(d.split_percentage || 50);
+                  const partnerShare = d.split_type === 'fixed' 
+                    ? parseFloat(d.split_amount || 0) 
+                    : netBeforeSplit * (100 - splitPct) / 100;
+                  totalPartnerPaid += partnerShare;
+                  return sum + (netBeforeSplit - partnerShare);
+                }
+                
+                return sum + netBeforeSplit;
               }, 0);
               
               const revenueGoal = goals.yearly_revenue_goal || 500000;
@@ -2361,7 +2412,7 @@ export default function MomentumApp() {
               return (
                 <div className="bg-gradient-to-r from-amber-900/30 to-yellow-900/30 rounded-xl p-4 border border-amber-700/50">
                   <h3 className="text-amber-400 font-bold mb-4">🎯 {dealsYear} Yearly Goals</h3>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <p className="text-slate-400 text-xs mb-1">Company Revenue</p>
                       <p className="text-2xl font-bold text-green-400">${totalRevenue.toLocaleString()}</p>
@@ -2381,6 +2432,38 @@ export default function MomentumApp() {
                       <p className="text-slate-400 text-xs mt-1">{netPct.toFixed(1)}%</p>
                     </div>
                   </div>
+                  {/* Expense Breakdown */}
+                  {(totalPartnerPaid > 0 || totalDispoPaid > 0 || totalAgentCommissions > 0 || totalAttorneyFees > 0) && (
+                    <div className="border-t border-amber-700/30 pt-3 mt-3">
+                      <p className="text-slate-400 text-xs mb-2">💸 Paid Out This Year:</p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                        {totalPartnerPaid > 0 && (
+                          <div className="bg-slate-800/50 rounded-lg p-2">
+                            <p className="text-slate-500">Team Partners</p>
+                            <p className="text-blue-400 font-semibold">${totalPartnerPaid.toLocaleString()}</p>
+                          </div>
+                        )}
+                        {totalDispoPaid > 0 && (
+                          <div className="bg-slate-800/50 rounded-lg p-2">
+                            <p className="text-slate-500">Dispo Partners</p>
+                            <p className="text-purple-400 font-semibold">${totalDispoPaid.toLocaleString()}</p>
+                          </div>
+                        )}
+                        {totalAgentCommissions > 0 && (
+                          <div className="bg-slate-800/50 rounded-lg p-2">
+                            <p className="text-slate-500">Agent Commissions</p>
+                            <p className="text-orange-400 font-semibold">${totalAgentCommissions.toLocaleString()}</p>
+                          </div>
+                        )}
+                        {totalAttorneyFees > 0 && (
+                          <div className="bg-slate-800/50 rounded-lg p-2">
+                            <p className="text-slate-500">Attorney Fees</p>
+                            <p className="text-red-400 font-semibold">${totalAttorneyFees.toLocaleString()}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()}
