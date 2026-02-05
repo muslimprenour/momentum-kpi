@@ -2394,18 +2394,70 @@ export default function MomentumApp() {
               const totalRevenue = userDeals.reduce((sum, d) => sum + parseFloat(d.revenue || 0), 0);
               const dealCount = userDeals.length;
               
-              // Calculate user's net take
+              // Calculate user's net take (accounting for all deductions)
               const netTake = userDeals.reduce((sum, d) => {
                 const rev = parseFloat(d.revenue || 0);
+                const isTraditional = d.deal_type === 'traditional';
+                
+                if (isTraditional) {
+                  // Traditional deals: commission is the net
+                  const commission = parseFloat(d.commission_amount || 0);
+                  if (d.split_with_user_id) {
+                    const splitPct = parseFloat(d.split_percentage || 50);
+                    if (d.user_id === currentUser?.id) {
+                      return sum + (commission * splitPct / 100);
+                    } else {
+                      return sum + (commission * (100 - splitPct) / 100);
+                    }
+                  }
+                  return sum + commission;
+                }
+                
+                // Wholesale deals: calculate net after all deductions
+                let realtorCommission = 0;
+                let dispoShare = 0;
+                let attorneyFee = 0;
+                
+                // Realtor commission
+                if (d.realtor_commission_paid) {
+                  if (d.realtor_commission_type === 'fixed' && d.realtor_commission_amount) {
+                    realtorCommission = parseFloat(d.realtor_commission_amount);
+                  } else if (d.realtor_commission_percentage) {
+                    realtorCommission = parseFloat(d.uc_price || 0) * parseFloat(d.realtor_commission_percentage) / 100;
+                  }
+                }
+                
+                const netAfterCommission = rev - realtorCommission;
+                
+                // Dispo share
+                if (d.dispo_help) {
+                  if (d.dispo_share_type === 'fixed' && d.dispo_share_amount) {
+                    dispoShare = parseFloat(d.dispo_share_amount);
+                  } else if (d.dispo_share_percentage) {
+                    dispoShare = netAfterCommission * parseFloat(d.dispo_share_percentage) / 100;
+                  }
+                }
+                
+                // Attorney fee
+                if (d.attorney_used && d.attorney_fee) {
+                  attorneyFee = parseFloat(d.attorney_fee);
+                }
+                
+                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee;
+                
+                // Partner split
                 if (d.split_with_user_id) {
                   const splitPct = parseFloat(d.split_percentage || 50);
                   if (d.user_id === currentUser?.id) {
-                    return sum + (rev * splitPct / 100);
+                    // Primary owner gets their percentage
+                    return sum + (netBeforeSplit * splitPct / 100);
                   } else {
-                    return sum + (rev * (100 - splitPct) / 100);
+                    // Partner gets the remainder
+                    return sum + (netBeforeSplit * (100 - splitPct) / 100);
                   }
                 }
-                return sum + rev;
+                
+                return sum + netBeforeSplit;
               }, 0);
 
               return (
