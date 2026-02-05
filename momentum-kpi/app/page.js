@@ -2313,8 +2313,8 @@ export default function MomentumApp() {
             <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white font-medium">Show Revenue on Home</p>
-                  <p className="text-slate-400 text-sm">Display YTD revenue widget on your home page</p>
+                  <p className="text-white font-medium">Default to Revenue View</p>
+                  <p className="text-slate-400 text-sm">Show Total Revenue instead of Personal Net (tap card to toggle)</p>
                 </div>
                 <button
                   onClick={toggleShowRevenueOnHome}
@@ -2549,23 +2549,34 @@ export default function MomentumApp() {
                     <p className="text-slate-400 text-sm">Deals Closed</p>
                     <p className="text-3xl font-bold text-white">{dealCount}</p>
                   </div>
-                  {currentUser?.role === 'owner' ? (
-                    <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-                      <p className="text-slate-400 text-sm">Total Revenue</p>
-                      <p className="text-3xl font-bold text-green-400">${totalRevenue.toLocaleString()}</p>
-                    </div>
-                  ) : (
-                    <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-                      <p className="text-slate-400 text-sm">Your Net Take</p>
-                      <p className="text-3xl font-bold text-green-400">${netTake.toLocaleString()}</p>
-                    </div>
-                  )}
-                  {currentUser?.role === 'owner' && (
-                    <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-                      <p className="text-slate-400 text-sm">Avg Per Deal</p>
-                      <p className="text-3xl font-bold text-blue-400">${dealCount > 0 ? Math.round(totalRevenue / dealCount).toLocaleString() : 0}</p>
-                    </div>
-                  )}
+                  {/* Toggleable Revenue/Net Take card */}
+                  <div 
+                    className="bg-slate-800 rounded-xl p-4 border border-slate-700 cursor-pointer hover:border-slate-500 transition-colors"
+                    onClick={() => setShowRevenueOnHome(!showRevenueOnHome)}
+                    title="Tap to toggle between Revenue and Net"
+                  >
+                    {showRevenueOnHome ? (
+                      <>
+                        <p className="text-slate-400 text-sm flex items-center gap-1">
+                          {currentUser?.role === 'owner' ? 'Total Revenue' : 'Company Revenue'} 
+                          <span className="text-xs text-slate-600">↔</span>
+                        </p>
+                        <p className="text-3xl font-bold text-green-400">${totalRevenue.toLocaleString()}</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-slate-400 text-sm flex items-center gap-1">
+                          {currentUser?.role === 'owner' ? 'Personal Net' : 'Your Net Take'}
+                          <span className="text-xs text-slate-600">↔</span>
+                        </p>
+                        <p className="text-3xl font-bold text-amber-400">${netTake.toLocaleString()}</p>
+                      </>
+                    )}
+                  </div>
+                  <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                    <p className="text-slate-400 text-sm">Avg Per Deal</p>
+                    <p className="text-3xl font-bold text-blue-400">${dealCount > 0 ? Math.round((showRevenueOnHome ? totalRevenue : netTake) / dealCount).toLocaleString() : 0}</p>
+                  </div>
                 </div>
               );
             })()}
