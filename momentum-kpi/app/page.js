@@ -2514,6 +2514,7 @@ export default function MomentumApp() {
                   let dispoShare = 0;
                   let realtorCommission = 0;
                   let attorneyFee = 0;
+                  let netBeforeSplit = revenue; // Default to revenue for traditional deals
                   
                   if (!isTraditional) {
                     // Realtor commission (calculated on UC price, not revenue)
@@ -2543,7 +2544,7 @@ export default function MomentumApp() {
                     }
                     
                     // Net after all deductions (before partner split)
-                    const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee;
+                    netBeforeSplit = netAfterCommission - dispoShare - attorneyFee;
                     
                     // Partner split
                     if (deal.split_with_user_id) {
@@ -2641,7 +2642,7 @@ export default function MomentumApp() {
                                 </div>
                               )}
                               {deal.split_with_user_id && currentUser?.role !== 'owner' && (
-                                <p className="text-sm text-slate-400">Your take: <span className="text-green-300">${(deal.split_type === 'fixed' ? (revenue - parseFloat(deal.split_amount || 0)) : (revenue * splitPct / 100)).toLocaleString()}</span></p>
+                                <p className="text-sm text-slate-400">Your take: <span className="text-green-300">${(deal.split_type === 'fixed' ? parseFloat(deal.split_amount || 0) : (netBeforeSplit * (100 - splitPct) / 100)).toLocaleString()}</span></p>
                               )}
                             </>
                           )}
