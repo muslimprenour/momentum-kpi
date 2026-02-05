@@ -1047,7 +1047,7 @@ export default function MomentumApp() {
   const [analyticsPeriod, setAnalyticsPeriod] = useState('daily');
   const [historyDate, setHistoryDate] = useState(getTodayInOrgTimezone());
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [profileForm, setProfileForm] = useState({ display_name: '', avatar_emoji: '', avatar_url: '' });
+  const [profileForm, setProfileForm] = useState({ display_name: '', avatar_emoji: '', avatar_url: '', yearly_net_goal: '' });
   const [profileSaving, setProfileSaving] = useState(false);
   const fileInputRef = useRef(null);
   const [kpiGoals, setKpiGoals] = useState(DEFAULT_KPI_GOALS);
@@ -1216,7 +1216,7 @@ export default function MomentumApp() {
     if (saved) {
       const user = JSON.parse(saved);
       setCurrentUser(user);
-      setProfileForm({ display_name: user.display_name || '', avatar_emoji: user.avatar_emoji || '', avatar_url: user.avatar_url || '' });
+      setProfileForm({ display_name: user.display_name || '', avatar_emoji: user.avatar_emoji || '', avatar_url: user.avatar_url || '', yearly_net_goal: user.yearly_net_goal || '' });
       setShowRevenueOnHome(user.show_revenue_home !== false); // Default to true if not set
       if (user.organization_id) {
         const { data: orgs } = await db.orgs.getById(user.organization_id);
@@ -1432,7 +1432,7 @@ export default function MomentumApp() {
     
     localStorage.setItem('momentum_user', JSON.stringify(user));
     setCurrentUser(user);
-    setProfileForm({ display_name: user.display_name || '', avatar_emoji: user.avatar_emoji || '', avatar_url: user.avatar_url || '' });
+    setProfileForm({ display_name: user.display_name || '', avatar_emoji: user.avatar_emoji || '', avatar_url: user.avatar_url || '', yearly_net_goal: user.yearly_net_goal || '' });
     setOrganization(orgs?.[0] || null);
     setView('dashboard');
   };
@@ -1519,14 +1519,14 @@ export default function MomentumApp() {
   };
 
   const openProfileModal = () => {
-    setProfileForm({ display_name: currentUser.display_name || '', avatar_emoji: currentUser.avatar_emoji || '', avatar_url: currentUser.avatar_url || '' });
+    setProfileForm({ display_name: currentUser.display_name || '', avatar_emoji: currentUser.avatar_emoji || '', avatar_url: currentUser.avatar_url || '', yearly_net_goal: currentUser.yearly_net_goal || '' });
     setShowProfileModal(true);
   };
 
   const handleProfileSave = async () => {
     setProfileSaving(true);
     try {
-      const updates = { display_name: profileForm.display_name || null, avatar_emoji: profileForm.avatar_emoji || null, avatar_url: profileForm.avatar_url || null };
+      const updates = { display_name: profileForm.display_name || null, avatar_emoji: profileForm.avatar_emoji || null, avatar_url: profileForm.avatar_url || null, yearly_net_goal: profileForm.yearly_net_goal ? parseInt(profileForm.yearly_net_goal) : null };
       await db.users.update(currentUser.id, updates);
       const updatedUser = { ...currentUser, ...updates };
       setCurrentUser(updatedUser);
@@ -1842,6 +1842,17 @@ export default function MomentumApp() {
                   {AVATAR_EMOJIS.map(emoji => <button key={emoji} onClick={() => selectEmoji(emoji)} className={`text-xl p-1 rounded hover:bg-slate-600 ${profileForm.avatar_emoji === emoji ? 'bg-blue-600' : ''}`}>{emoji}</button>)}
                 </div>
                 {(profileForm.avatar_emoji || profileForm.avatar_url) && <button onClick={clearAvatar} className="w-full text-red-400 hover:text-red-300 text-sm mt-2">✕ Remove Avatar</button>}
+              </div>
+              <div className="mb-4 border-t border-slate-700 pt-4">
+                <label className="text-slate-400 text-sm mb-1 block">🎯 My Yearly Net Goal ($)</label>
+                <input 
+                  type="number" 
+                  placeholder="e.g. 100000" 
+                  value={profileForm.yearly_net_goal} 
+                  onChange={e => setProfileForm(prev => ({ ...prev, yearly_net_goal: e.target.value }))} 
+                  className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-green-500 focus:outline-none" 
+                />
+                <p className="text-slate-500 text-xs mt-1">Set your personal target for the year</p>
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setShowProfileModal(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-lg">Cancel</button>
@@ -2475,7 +2486,7 @@ export default function MomentumApp() {
               }, 0);
               
               const revenueGoal = goals.yearly_revenue_goal || 500000;
-              const netGoal = goals.yearly_personal_net_goal || 250000;
+              const netGoal = currentUser?.yearly_net_goal || goals.yearly_personal_net_goal || 250000;
               const revenuePct = Math.min((totalRevenue / revenueGoal) * 100, 100);
               const netPct = Math.min((totalPersonalNet / netGoal) * 100, 100);
               
