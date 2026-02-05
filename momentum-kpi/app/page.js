@@ -2387,7 +2387,7 @@ export default function MomentumApp() {
                   </div>
                   <button
                     onClick={() => setHomeWidgetMode(homeWidgetMode === 'net' ? 'revenue' : 'net')}
-                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${homeWidgetMode === 'net' ? 'bg-amber-600' : 'bg-slate-600'}`}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${homeWidgetMode === 'net' ? 'bg-green-600' : 'bg-slate-600'}`}
                   >
                     <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${homeWidgetMode === 'net' ? 'translate-x-6' : 'translate-x-1'}`} />
                   </button>
@@ -2480,31 +2480,31 @@ export default function MomentumApp() {
               const netPct = Math.min((totalPersonalNet / netGoal) * 100, 100);
               
               return (
-                <div className="bg-gradient-to-r from-amber-900/30 to-yellow-900/30 rounded-xl p-4 border border-amber-700/50">
-                  <h3 className="text-amber-400 font-bold mb-4">🎯 {dealsYear} Yearly Goals</h3>
+                <div className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 rounded-xl p-4 border border-green-700/50">
+                  <h3 className="text-green-400 font-bold mb-4">🎯 {dealsYear} Yearly Goals</h3>
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <p className="text-slate-400 text-xs mb-1">Company Revenue</p>
-                      <p className="text-2xl font-bold text-green-400">${totalRevenue.toLocaleString()}</p>
+                      <p className="text-2xl font-bold text-amber-400">${totalRevenue.toLocaleString()}</p>
                       <p className="text-slate-500 text-xs">of ${revenueGoal.toLocaleString()} goal</p>
                       <div className="w-full bg-slate-700 rounded-full h-2 mt-2">
-                        <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${revenuePct}%` }} />
+                        <div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${revenuePct}%` }} />
                       </div>
                       <p className="text-slate-400 text-xs mt-1">{revenuePct.toFixed(1)}%</p>
                     </div>
                     <div>
                       <p className="text-slate-400 text-xs mb-1">Personal Net</p>
-                      <p className="text-2xl font-bold text-amber-400">${totalPersonalNet.toLocaleString()}</p>
+                      <p className="text-2xl font-bold text-green-400">${totalPersonalNet.toLocaleString()}</p>
                       <p className="text-slate-500 text-xs">of ${netGoal.toLocaleString()} goal</p>
                       <div className="w-full bg-slate-700 rounded-full h-2 mt-2">
-                        <div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${netPct}%` }} />
+                        <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${netPct}%` }} />
                       </div>
                       <p className="text-slate-400 text-xs mt-1">{netPct.toFixed(1)}%</p>
                     </div>
                   </div>
                   {/* Expense Breakdown */}
                   {(totalPartnerPaid > 0 || totalDispoPaid > 0 || totalAgentCommissions > 0 || totalAttorneyFees > 0) && (
-                    <div className="border-t border-amber-700/30 pt-3 mt-3">
+                    <div className="border-t border-green-700/30 pt-3 mt-3">
                       <p className="text-slate-400 text-xs mb-2">💸 Paid Out This Year:</p>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                         {totalPartnerPaid > 0 && (
@@ -2631,7 +2631,7 @@ export default function MomentumApp() {
                           {currentUser?.role === 'owner' ? 'Total Revenue' : 'Company Revenue'} 
                           <span className="text-xs text-slate-600">↔</span>
                         </p>
-                        <p className="text-3xl font-bold text-green-400">${totalRevenue.toLocaleString()}</p>
+                        <p className="text-3xl font-bold text-amber-400">${totalRevenue.toLocaleString()}</p>
                       </>
                     ) : (
                       <>
@@ -2639,7 +2639,7 @@ export default function MomentumApp() {
                           {currentUser?.role === 'owner' ? 'Personal Net' : 'Your Net Take'}
                           <span className="text-xs text-slate-600">↔</span>
                         </p>
-                        <p className="text-3xl font-bold text-amber-400">${netTake.toLocaleString()}</p>
+                        <p className="text-3xl font-bold text-green-400">${netTake.toLocaleString()}</p>
                       </>
                     )}
                   </div>
