@@ -2638,33 +2638,40 @@ export default function MomentumApp() {
                     <p className="text-slate-400 text-sm">Deals Closed</p>
                     <p className="text-3xl font-bold text-white">{dealCount}</p>
                   </div>
-                  {/* Toggleable Revenue/Net Take card */}
-                  <div 
-                    className="bg-slate-800 rounded-xl p-4 border border-slate-700 cursor-pointer hover:border-slate-500 transition-colors"
-                    onClick={() => setShowRevenueOnHome(!showRevenueOnHome)}
-                    title="Tap to toggle between Revenue and Net"
-                  >
-                    {showRevenueOnHome ? (
-                      <>
-                        <p className="text-slate-400 text-sm flex items-center gap-1">
-                          {currentUser?.role === 'owner' ? 'Total Revenue' : 'Company Revenue'} 
-                          <span className="text-xs text-slate-600">↔</span>
-                        </p>
-                        <p className="text-3xl font-bold text-amber-400">${totalRevenue.toLocaleString()}</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-slate-400 text-sm flex items-center gap-1">
-                          {currentUser?.role === 'owner' ? 'Personal Net' : 'Your Net Take'}
-                          <span className="text-xs text-slate-600">↔</span>
-                        </p>
-                        <p className="text-3xl font-bold text-green-400">${netTake.toLocaleString()}</p>
-                      </>
-                    )}
-                  </div>
+                  {/* Toggleable Revenue/Net Take card - owner only toggle, team sees net only */}
+                  {currentUser?.role === 'owner' ? (
+                    <div 
+                      className="bg-slate-800 rounded-xl p-4 border border-slate-700 cursor-pointer hover:border-slate-500 transition-colors"
+                      onClick={() => setShowRevenueOnHome(!showRevenueOnHome)}
+                      title="Tap to toggle between Revenue and Net"
+                    >
+                      {showRevenueOnHome ? (
+                        <>
+                          <p className="text-slate-400 text-sm flex items-center gap-1">
+                            Total Revenue
+                            <span className="text-xs text-slate-600">↔</span>
+                          </p>
+                          <p className="text-3xl font-bold text-amber-400">${totalRevenue.toLocaleString()}</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-slate-400 text-sm flex items-center gap-1">
+                            Personal Net
+                            <span className="text-xs text-slate-600">↔</span>
+                          </p>
+                          <p className="text-3xl font-bold text-green-400">${netTake.toLocaleString()}</p>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                      <p className="text-slate-400 text-sm">Your Earnings</p>
+                      <p className="text-3xl font-bold text-green-400">${netTake.toLocaleString()}</p>
+                    </div>
+                  )}
                   <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
                     <p className="text-slate-400 text-sm">Avg Per Deal</p>
-                    <p className="text-3xl font-bold text-blue-400">${dealCount > 0 ? Math.round((showRevenueOnHome ? totalRevenue : netTake) / dealCount).toLocaleString() : 0}</p>
+                    <p className="text-3xl font-bold text-blue-400">${dealCount > 0 ? Math.round((currentUser?.role === 'owner' && showRevenueOnHome ? totalRevenue : netTake) / dealCount).toLocaleString() : 0}</p>
                   </div>
                 </div>
               );
@@ -2757,7 +2764,7 @@ export default function MomentumApp() {
                           <p className="text-slate-400 text-sm">
                             Closed: {new Date(deal.closed_date).toLocaleDateString()}
                           </p>
-                          {isTraditional ? (
+                          {currentUser?.role === 'owner' && (isTraditional ? (
                             <div className="flex gap-4 mt-2 text-sm">
                               <span className="text-slate-400">Sale: <span className="text-white">${parseFloat(deal.sale_price || 0).toLocaleString()}</span></span>
                             </div>
@@ -2766,8 +2773,8 @@ export default function MomentumApp() {
                               <span className="text-slate-400">UC: <span className="text-white">${parseFloat(deal.uc_price).toLocaleString()}</span></span>
                               <span className="text-slate-400">Sold: <span className="text-white">${parseFloat(deal.sold_price).toLocaleString()}</span></span>
                             </div>
-                          )}
-                          {!isTraditional && splitUser && (
+                          ))}
+                          {!isTraditional && splitUser && currentUser?.role === 'owner' && (
                             <p className="text-slate-400 text-sm mt-1">
                               Split with {splitUser.display_name || splitUser.name} {deal.split_type === 'fixed' ? `($${parseFloat(deal.split_amount || 0).toLocaleString()})` : `(${splitPct}/${100-splitPct})`}
                             </p>
@@ -2813,20 +2820,22 @@ export default function MomentumApp() {
                         <div className="text-right">
                           {isTraditional ? (
                             <p className="text-2xl font-bold text-blue-400">${commission.toLocaleString()}</p>
-                          ) : (
+                          ) : currentUser?.role === 'owner' ? (
                             <>
                               <p className="text-2xl font-bold text-green-400">${revenue.toLocaleString()}</p>
                               <p className="text-xs text-slate-500">Company Revenue</p>
-                              {(partnerShare > 0 || dispoShare > 0) && currentUser?.role === 'owner' && (
+                              {(partnerShare > 0 || dispoShare > 0) && (
                                 <div className="text-xs text-slate-400 mt-1 space-y-0.5">
                                   {partnerShare > 0 && <p>Partner: -${partnerShare.toLocaleString()}</p>}
                                   {dispoShare > 0 && <p>Dispo: -${dispoShare.toLocaleString()}</p>}
                                   <p className="text-green-300 font-semibold">My Net: ${myNet.toLocaleString()}</p>
                                 </div>
                               )}
-                              {deal.split_with_user_id && currentUser?.role !== 'owner' && (
-                                <p className="text-sm text-slate-400">Your take: <span className="text-green-300">${(deal.split_type === 'fixed' ? parseFloat(deal.split_amount || 0) : (netBeforeSplit * (100 - splitPct) / 100)).toLocaleString()}</span></p>
-                              )}
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-2xl font-bold text-green-400">${(deal.split_with_user_id ? (deal.split_type === 'fixed' ? parseFloat(deal.split_amount || 0) : (netBeforeSplit * (100 - splitPct) / 100)) : revenue).toLocaleString()}</p>
+                              <p className="text-xs text-slate-500">Your Earnings</p>
                             </>
                           )}
                           {currentUser?.role === 'owner' && (
