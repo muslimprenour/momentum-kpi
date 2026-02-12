@@ -1116,22 +1116,26 @@ export default function MomentumApp() {
     hud: null
   });
   
-  // Upload file to Supabase Storage
+  // Upload file to Supabase Storage via API route (uses service role key server-side)
   const uploadDealDocument = async (file, dealId, docType) => {
     if (!file) return null;
     const fileExt = file.name.split('.').pop();
-    const fileName = `${organization.id}/${dealId}/${docType}.${fileExt}`;
-    const { data, error } = await supabase.storage
-      .from('deal-documents')
-      .upload(fileName, file, { upsert: true });
-    if (error) {
-      console.error('Upload error:', error);
+    const filePath = `${organization.id}/${dealId}/${docType}.${fileExt}`;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('filePath', filePath);
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const result = await res.json();
+      if (!res.ok || result.error) {
+        console.error('Upload error:', result.error);
+        return null;
+      }
+      return result.url;
+    } catch (e) {
+      console.error('Upload error:', e);
       return null;
     }
-    const { data: urlData } = supabase.storage
-      .from('deal-documents')
-      .getPublicUrl(fileName);
-    return urlData.publicUrl;
   };
   const [lastOfferCount, setLastOfferCount] = useState(0);
 
@@ -3075,6 +3079,7 @@ export default function MomentumApp() {
                                 className="w-full bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
                               >
                                 <option value="50">50/50</option>
+                                <option value="55">55/45</option>
                                 <option value="60">60/40</option>
                                 <option value="70">70/30</option>
                                 <option value="75">75/25</option>
