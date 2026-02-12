@@ -2764,7 +2764,7 @@ export default function MomentumApp() {
                           <p className="text-slate-400 text-sm">
                             Closed: {new Date(deal.closed_date).toLocaleDateString()}
                           </p>
-                          {currentUser?.role === 'owner' && (isTraditional ? (
+                          {isTraditional ? (
                             <div className="flex gap-4 mt-2 text-sm">
                               <span className="text-slate-400">Sale: <span className="text-white">${parseFloat(deal.sale_price || 0).toLocaleString()}</span></span>
                             </div>
@@ -2773,13 +2773,16 @@ export default function MomentumApp() {
                               <span className="text-slate-400">UC: <span className="text-white">${parseFloat(deal.uc_price).toLocaleString()}</span></span>
                               <span className="text-slate-400">Sold: <span className="text-white">${parseFloat(deal.sold_price).toLocaleString()}</span></span>
                             </div>
-                          ))}
-                          {!isTraditional && splitUser && currentUser?.role === 'owner' && (
+                          )}
+                          {!isTraditional && splitUser && (
                             <p className="text-slate-400 text-sm mt-1">
-                              Split with {splitUser.display_name || splitUser.name} {deal.split_type === 'fixed' ? `($${parseFloat(deal.split_amount || 0).toLocaleString()})` : `(${splitPct}/${100-splitPct})`}
+                              {currentUser?.role === 'owner' 
+                                ? `Split with ${splitUser.display_name || splitUser.name} ${deal.split_type === 'fixed' ? `($${parseFloat(deal.split_amount || 0).toLocaleString()})` : `(${splitPct}/${100-splitPct})`}`
+                                : `Split with Ishaq ${deal.split_type === 'fixed' ? `($${parseFloat(deal.split_amount || 0).toLocaleString()})` : `(${100-splitPct}/${splitPct})`}`
+                              }
                             </p>
                           )}
-                          {!isTraditional && deal.dispo_help && currentUser?.role === 'owner' && (
+                          {!isTraditional && deal.dispo_help && (
                             <p className="text-amber-400 text-sm mt-1">
                               🤝 Dispo: {deal.dispo_name} {deal.dispo_share_type === 'fixed' ? `($${parseFloat(deal.dispo_share_amount || 0).toLocaleString()})` : `(${deal.dispo_share_percentage}%)`}
                             </p>
@@ -2836,6 +2839,13 @@ export default function MomentumApp() {
                             <>
                               <p className="text-2xl font-bold text-green-400">${(deal.split_with_user_id ? (deal.split_type === 'fixed' ? parseFloat(deal.split_amount || 0) : (netBeforeSplit * (100 - splitPct) / 100)) : revenue).toLocaleString()}</p>
                               <p className="text-xs text-slate-500">Your Earnings</p>
+                              <div className="text-xs text-slate-500 mt-1 space-y-0.5">
+                                <p>Revenue: ${revenue.toLocaleString()}</p>
+                                {realtorCommission > 0 && <p>Agent Fee: -${realtorCommission.toLocaleString()}</p>}
+                                {dispoShare > 0 && <p>Dispo: -${dispoShare.toLocaleString()}</p>}
+                                {attorneyFee > 0 && <p>Attorney: -${attorneyFee.toLocaleString()}</p>}
+                                {deal.split_with_user_id && <p>Split ({100-splitPct}/{splitPct}): ${(deal.split_type === 'fixed' ? parseFloat(deal.split_amount || 0) : (netBeforeSplit * (100 - splitPct) / 100)).toLocaleString()}</p>}
+                              </div>
                             </>
                           )}
                           {currentUser?.role === 'owner' && (
