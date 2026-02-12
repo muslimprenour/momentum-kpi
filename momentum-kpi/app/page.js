@@ -2096,7 +2096,7 @@ export default function MomentumApp() {
                       {totalDeals > 0 && (
                         <div className={`mt-3 pt-3 border-t ${showNet ? 'border-green-700/30' : 'border-amber-700/30'} grid grid-cols-2 gap-2`}>
                           <div>
-                            <p className="text-orange-400/50 text-xs">📦 Wholesale</p>
+                            <p className="text-orange-400/50 text-xs">⚡ Wholesale</p>
                             <p className="text-orange-300 font-semibold">${wholesaleRevenue.toLocaleString()}</p>
                           </div>
                           <div>
@@ -2762,7 +2762,7 @@ export default function MomentumApp() {
                           <div className="flex items-center gap-2 mb-1">
                             <p className="text-white font-semibold text-lg">{deal.property_address}</p>
                             <span className={`text-xs px-2 py-0.5 rounded ${isTraditional ? 'bg-blue-600/30 text-blue-300' : 'bg-green-600/30 text-green-300'}`}>
-                              {isTraditional ? '🏠 Traditional' : '📦 Wholesale'}
+                              {isTraditional ? '🏠 Traditional' : '⚡ Wholesale'}
                             </span>
                             {isBonus && currentUser?.role !== 'owner' && (
                               <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/30 text-yellow-300 border border-yellow-500/30 animate-pulse">
