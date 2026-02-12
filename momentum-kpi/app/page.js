@@ -2750,6 +2750,10 @@ export default function MomentumApp() {
                   // My net = revenue - realtor commission - dispo share - attorney fee - partner share
                   const myNet = revenue - realtorCommission - dispoShare - attorneyFee - partnerShare;
                   const splitPct = parseFloat(deal.split_percentage || 50);
+                  
+                  // Bonus detection: if partner got fixed amount higher than standard 50/50 would give
+                  const standardPartnerShare = netBeforeSplit * 0.5;
+                  const isBonus = !isTraditional && deal.split_with_user_id && deal.split_type === 'fixed' && parseFloat(deal.split_amount || 0) > standardPartnerShare;
 
                   return (
                     <div key={deal.id} className="bg-slate-800 rounded-xl p-4 border border-slate-700">
@@ -2760,6 +2764,16 @@ export default function MomentumApp() {
                             <span className={`text-xs px-2 py-0.5 rounded ${isTraditional ? 'bg-blue-600/30 text-blue-300' : 'bg-green-600/30 text-green-300'}`}>
                               {isTraditional ? '🏠 Traditional' : '📦 Wholesale'}
                             </span>
+                            {isBonus && currentUser?.role !== 'owner' && (
+                              <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/30 text-yellow-300 border border-yellow-500/30 animate-pulse">
+                                ⭐ Bonus Deal
+                              </span>
+                            )}
+                            {isBonus && currentUser?.role === 'owner' && (
+                              <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
+                                ⭐ Bonus
+                              </span>
+                            )}
                           </div>
                           <p className="text-slate-400 text-sm">
                             Closed: {new Date(deal.closed_date).toLocaleDateString()}
