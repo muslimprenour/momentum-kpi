@@ -214,7 +214,7 @@ const importPendingOffers = async (userId, userName, organizationId) => {
     
     // Import matching offers
     for (const pending of matchingOffers) {
-      await db.kpis.upsert({ user_id: userId, date: pending.date, offers: pending.offer_count, new_agents: 0, follow_ups: 0, phone_calls: 0, deals_under_contract: 0, deals_closed: 0, notes: '' });
+      await db.kpis.upsert({ user_id: userId, date: pending.date, offers: pending.offer_count, off_market_offers: pending.off_market_count || 0, new_agents: 0, follow_ups: 0, phone_calls: 0, deals_under_contract: 0, deals_closed: 0, notes: '' });
       await db.pendingOffers.deleteById(pending.id);
     }
     
@@ -1581,7 +1581,7 @@ export default function MomentumApp() {
     setKpiSaving(false);
   };
 
-  const getMyKPI = () => teamKPIs[currentUser?.id]?.[today] || { offers: 0, new_agents: 0, follow_ups: 0, phone_calls: 0, deals_under_contract: 0, deals_closed: 0, list_backs: 0, notes: '' };
+  const getMyKPI = () => teamKPIs[currentUser?.id]?.[today] || { offers: 0, off_market_offers: 0, new_agents: 0, follow_ups: 0, phone_calls: 0, deals_under_contract: 0, deals_closed: 0, list_backs: 0, notes: '' };
 
   const updateKPI = async (field, value) => {
     const current = getMyKPI();
@@ -1599,7 +1599,7 @@ export default function MomentumApp() {
     }
     
     setTeamKPIs(prev => ({ ...prev, [currentUser.id]: { ...prev[currentUser.id], [today]: updated } }));
-    const { error } = await db.kpis.upsert({ user_id: currentUser.id, date: today, offers: updated.offers || 0, new_agents: updated.new_agents || 0, follow_ups: updated.follow_ups || 0, phone_calls: updated.phone_calls || 0, deals_under_contract: updated.deals_under_contract || 0, deals_closed: updated.deals_closed || 0, list_backs: updated.list_backs || 0, notes: updated.notes || '' });
+    const { error } = await db.kpis.upsert({ user_id: currentUser.id, date: today, offers: updated.offers || 0, off_market_offers: updated.off_market_offers || 0, new_agents: updated.new_agents || 0, follow_ups: updated.follow_ups || 0, phone_calls: updated.phone_calls || 0, deals_under_contract: updated.deals_under_contract || 0, deals_closed: updated.deals_closed || 0, list_backs: updated.list_backs || 0, notes: updated.notes || '' });
     if (error) console.error('KPI save failed:', error);
   };
 
@@ -1631,27 +1631,47 @@ export default function MomentumApp() {
     }
     return Object.entries(userKPIs).reduce((acc, [date, kpi]) => {
       if (date >= startDateStr && date <= endDateStr) {
-        return { offers: acc.offers + (kpi.offers || 0), texts: acc.texts + (kpi.new_agents || 0) + (kpi.follow_ups || 0), calls: acc.calls + (kpi.phone_calls || 0), contracts: acc.contracts + (kpi.deals_under_contract || 0), closed: acc.closed + (kpi.deals_closed || 0) };
+        return { offers: acc.offers + (kpi.offers || 0), off_market: acc.off_market + (kpi.off_market_offers || 0), texts: acc.texts + (kpi.new_agents || 0) + (kpi.follow_ups || 0), calls: acc.calls + (kpi.phone_calls || 0), contracts: acc.contracts + (kpi.deals_under_contract || 0), closed: acc.closed + (kpi.deals_closed || 0) };
       }
       return acc;
-    }, { offers: 0, texts: 0, calls: 0, contracts: 0, closed: 0 });
+    }, { offers: 0, off_market: 0, texts: 0, calls: 0, contracts: 0, closed: 0 });
   };
 
   const getTeamTotals = (period) => {
     const statsPeriod = period === 'weekly' ? 'week' : period === 'monthly' ? 'month' : period === 'quarterly' ? 'quarter' : period;
     return teamMembers.reduce((t, user) => {
       const kpi = period === 'daily' ? (teamKPIs[user.id]?.[today] || {}) : getStats(user.id, statsPeriod);
-      const s = period === 'daily' ? { offers: kpi.offers || 0, texts: (kpi.new_agents || 0) + (kpi.follow_ups || 0), calls: kpi.phone_calls || 0, contracts: kpi.deals_under_contract || 0, closed: kpi.deals_closed || 0 } : kpi;
-      return { offers: t.offers + s.offers, texts: t.texts + s.texts, calls: t.calls + s.calls, contracts: t.contracts + s.contracts, closed: t.closed + s.closed };
-    }, { offers: 0, texts: 0, calls: 0, contracts: 0, closed: 0 });
+      const s = period === 'daily' ? { offers: kpi.offers || 0, off_market: kpi.off_market_offers || 0, texts: (kpi.new_agents || 0) + (kpi.follow_ups || 0), calls: kpi.phone_calls || 0, contracts: kpi.deals_under_contract || 0, closed: kpi.deals_closed || 0 } : kpi;
+      return { offers: t.offers + s.offers, off_market: t.off_market + (s.off_market || 0), texts: t.texts + s.texts, calls: t.calls + s.calls, contracts: t.contracts + s.contracts, closed: t.closed + s.closed };
+    }, { offers: 0, off_market: 0, texts: 0, calls: 0, contracts: 0, closed: 0 });
   };
 
   const getLeaderboard = () => {
     const period = leaderboardPeriod === 'week' ? 'week' : 'month';
     return teamMembers.map(user => {
       const s = getStats(user.id, period);
-      return { user, stats: s, score: s.offers + s.texts + s.calls + s.contracts * 10 + s.closed * 20 };
+      const regularOffers = s.offers - (s.off_market || 0);
+      const offMarketOffers = s.off_market || 0;
+      const score = (regularOffers * 1) + (offMarketOffers * 10) + (s.texts * 0.10) + (s.calls * 1) + (s.contracts * 200) + (s.closed * 400);
+      return { user, stats: s, score: Math.round(score) };
     }).sort((a, b) => b.score - a.score);
+  };
+
+  // Metric visibility helpers
+  const isMetricVisible = (user, metricName) => {
+    if (!user?.metric_visibility) return true; // NULL = all visible
+    return user.metric_visibility[metricName] !== false;
+  };
+  const myMetricVisible = (metricName) => isMetricVisible(currentUser, metricName);
+  const updateMetricVisibility = async (userId, visibility) => {
+    const { error } = await supabase.from('users').update({ metric_visibility: visibility }).eq('id', userId);
+    if (error) { console.error('Failed to update metric visibility:', error); return; }
+    setTeamMembers(prev => prev.map(u => u.id === userId ? { ...u, metric_visibility: visibility } : u));
+    if (userId === currentUser?.id) {
+      const updatedUser = { ...currentUser, metric_visibility: visibility };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('momentum_user', JSON.stringify(updatedUser));
+    }
   };
 
   const exportCSV = () => {
@@ -2112,9 +2132,10 @@ export default function MomentumApp() {
               );
             })()}
 
-            <OffersCard offers={myKPI.offers || 0} goal={goals.daily_offers} isGoogleSync={organization?.google_sheet_sync} onUpdate={(value) => updateKPI('offers', value)} />
+            {myMetricVisible('offers') && <OffersCard offers={myKPI.offers || 0} goal={goals.daily_offers} isGoogleSync={organization?.google_sheet_sync} onUpdate={(value) => updateKPI('offers', value)} />}
 
             {/* Phone Conversations Card */}
+            {myMetricVisible('phone_calls') && (
             <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 md:p-4 border border-slate-700/50 md:border-slate-700">
               <div className="flex justify-between items-start mb-3">
                 <div>
@@ -2134,8 +2155,10 @@ export default function MomentumApp() {
                 <button onClick={() => updateKPI('phone_calls', (myKPI.phone_calls || 0) + 5)} className="flex-1 bg-green-600 hover:bg-green-500 text-white py-3.5 md:py-3 rounded-xl md:rounded-lg text-base font-semibold active:scale-95 transition-all">+5</button>
               </div>
             </div>
+            )}
 
             {/* List Backs Secured Card */}
+            {myMetricVisible('list_backs') && (
             <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 md:p-4 border border-slate-700/50 md:border-slate-700">
               <div className="flex justify-between items-start mb-3">
                 <div>
@@ -2151,8 +2174,10 @@ export default function MomentumApp() {
                 <button onClick={() => updateKPI('list_backs', (myKPI.list_backs || 0) + 1)} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white py-3.5 md:py-3 rounded-xl md:rounded-lg text-base font-semibold active:scale-95 transition-all">+1</button>
               </div>
             </div>
+            )}
 
             {/* Agent Texts Card */}
+            {myMetricVisible('texts') && (
             <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 md:p-4 border border-slate-700/50 md:border-slate-700">
               <div className="flex justify-between items-start mb-3">
                 <div>
@@ -2183,9 +2208,12 @@ export default function MomentumApp() {
                 ))}
               </div>
             </div>
+            )}
 
             {/* Deals Row */}
+            {(myMetricVisible('deals_uc') || myMetricVisible('deals_closed')) && (
             <div className="grid grid-cols-2 gap-3 md:gap-4">
+              {myMetricVisible('deals_uc') && (
               <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
@@ -2200,6 +2228,8 @@ export default function MomentumApp() {
                   <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) + 1)} className="flex-1 bg-purple-600 text-white py-3 rounded-xl md:rounded-lg font-semibold active:scale-95 transition-all">+1</button>
                 </div>
               </div>
+              )}
+              {myMetricVisible('deals_closed') && (
               <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center">
@@ -2214,7 +2244,9 @@ export default function MomentumApp() {
                   <button onClick={() => updateKPI('deals_closed', (myKPI.deals_closed || 0) + 1)} className="flex-1 bg-yellow-600 text-white py-3 rounded-xl md:rounded-lg font-semibold active:scale-95 transition-all">+1</button>
                 </div>
               </div>
+              )}
             </div>
+            )}
 
             {/* 7-Day Trends */}
             <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700">
@@ -2308,7 +2340,7 @@ export default function MomentumApp() {
                             <span className="text-orange-400 text-xs font-medium">🔥{memberStreak.current}</span>
                           )}
                         </div>
-                        <p className="text-slate-400 text-xs">Offers: {e.stats.offers} | Texts: {e.stats.texts} | Calls: {e.stats.calls}</p>
+                        <p className="text-slate-400 text-xs">Offers: {e.stats.offers}{e.stats.off_market > 0 && <span className="text-purple-400"> ({e.stats.off_market} off-mkt)</span>} | Texts: {e.stats.texts} | Calls: {e.stats.calls}</p>
                       </div>
                       <div className="hidden sm:block">
                         <Sparkline data={memberOffersTrend} color="#eab308" width={60} height={24} />
@@ -3783,6 +3815,49 @@ export default function MomentumApp() {
                   </div>
                 </div>
                 <button onClick={handleKpiGoalsSave} disabled={kpiSaving} className="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold disabled:opacity-50">{kpiSaving ? 'Saving...' : '💾 Save KPI Goals'}</button>
+              </div>
+              <div className="mb-6">
+                <h3 className="text-white font-semibold mb-3">👁️ Metric Visibility (Per User)</h3>
+                <p className="text-slate-400 text-xs mb-3">Control which metric cards each team member sees on their dashboard</p>
+                <div className="space-y-3">
+                  {teamMembers.map(u => {
+                    const vis = u.metric_visibility || {};
+                    const metrics = [
+                      { key: 'offers', label: 'Offers' },
+                      { key: 'phone_calls', label: 'Calls' },
+                      { key: 'texts', label: 'Texts' },
+                      { key: 'list_backs', label: 'List Backs' },
+                      { key: 'deals_uc', label: 'Deals UC' },
+                      { key: 'deals_closed', label: 'Closed' }
+                    ];
+                    return (
+                      <div key={u.id} className="bg-slate-700 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <UserAvatar user={u} size="sm" />
+                          <span className="text-white font-semibold text-sm">{u.display_name || u.name}</span>
+                          {!u.metric_visibility && <span className="text-slate-500 text-xs">(all visible — default)</span>}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {metrics.map(m => {
+                            const isVisible = vis[m.key] !== false;
+                            return (
+                              <button
+                                key={m.key}
+                                onClick={() => {
+                                  const newVis = { ...vis, [m.key]: !isVisible };
+                                  updateMetricVisibility(u.id, newVis);
+                                }}
+                                className={`px-2 py-1 rounded text-xs font-medium transition-all ${isVisible ? 'bg-green-600/30 text-green-400 border border-green-600/50' : 'bg-red-600/20 text-red-400 border border-red-600/30'}`}
+                              >
+                                {isVisible ? '✅' : '❌'} {m.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
               <div className="mb-6">
                 <h3 className="text-white font-semibold mb-3">Invite Codes</h3>
