@@ -1108,7 +1108,9 @@ export default function MomentumApp() {
     // Agent info (auto-adds to VIP agents)
     agent_name: '',
     agent_email: '',
-    agent_phone: ''
+    agent_phone: '',
+    zillow_url: '',
+    misc_fees: []
   });
   const [dealFiles, setDealFiles] = useState({
     purchase_contract: null,
@@ -2052,9 +2054,11 @@ export default function MomentumApp() {
                     const partnerShare = d.split_type === 'fixed' 
                       ? parseFloat(d.split_amount || 0) 
                       : commission * (100 - splitPct) / 100;
-                    return sum + (commission - partnerShare);
+                    const miscTotal = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
+                    return sum + (commission - partnerShare - miscTotal);
                   }
-                  return sum + commission;
+                  const miscTotal = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
+                  return sum + (commission - miscTotal);
                 }
                 
                 let realtorCommission = 0;
@@ -2083,7 +2087,8 @@ export default function MomentumApp() {
                   attorneyFee = parseFloat(d.attorney_fee);
                 }
                 
-                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee;
+                const miscFeesTotal = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
+                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee - miscFeesTotal;
                 
                 if (d.split_with_user_id) {
                   const splitPct = parseFloat(d.split_percentage || 50);
@@ -2408,7 +2413,7 @@ export default function MomentumApp() {
               </div>
               {currentUser?.role === 'owner' && (
                 <button 
-                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', split_type: 'percentage', split_amount: '', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '', dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '', dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '', realtor_commission_paid: false, realtor_commission_type: 'percentage', realtor_commission_percentage: '', realtor_commission_amount: '', attorney_used: false, attorney_fee: '', agent_name: '', agent_email: '', agent_phone: '' }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
+                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', split_type: 'percentage', split_amount: '', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '', dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '', dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '', realtor_commission_paid: false, realtor_commission_type: 'percentage', realtor_commission_percentage: '', realtor_commission_amount: '', attorney_used: false, attorney_fee: '', agent_name: '', agent_email: '', agent_phone: '', zillow_url: '', misc_fees: [] }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
                 >
                   + Add Deal
@@ -2457,6 +2462,7 @@ export default function MomentumApp() {
               let totalDispoPaid = 0;
               let totalAgentCommissions = 0;
               let totalAttorneyFees = 0;
+              let totalMiscFees = 0;
               
               // Calculate total personal net (revenue - ALL expenses)
               const totalPersonalNet = yearDeals.reduce((sum, d) => {
@@ -2466,15 +2472,17 @@ export default function MomentumApp() {
                 if (isTraditional) {
                   // For traditional deals, commission is the net
                   const commission = parseFloat(d.commission_amount || 0);
+                  const miscTotal = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
+                  totalMiscFees += miscTotal;
                   if (d.split_with_user_id) {
                     const splitPct = parseFloat(d.split_percentage || 50);
                     const partnerShare = d.split_type === 'fixed' 
                       ? parseFloat(d.split_amount || 0) 
                       : commission * (100 - splitPct) / 100;
                     totalPartnerPaid += partnerShare;
-                    return sum + (commission - partnerShare);
+                    return sum + (commission - partnerShare - miscTotal);
                   }
-                  return sum + commission;
+                  return sum + (commission - miscTotal);
                 }
                 
                 // Wholesale deals
@@ -2510,7 +2518,9 @@ export default function MomentumApp() {
                 }
                 totalAttorneyFees += attorneyFee;
                 
-                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee;
+                const miscFeesTotal = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
+                totalMiscFees += miscFeesTotal;
+                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee - miscFeesTotal;
                 
                 // Partner split
                 if (d.split_with_user_id) {
@@ -2527,7 +2537,8 @@ export default function MomentumApp() {
               
               const revenueGoal = goals.yearly_revenue_goal || 500000;
               const netGoal = currentUser?.yearly_net_goal || goals.yearly_personal_net_goal || 250000;
-              const revenuePct = Math.min((totalRevenue / revenueGoal) * 100, 100);
+              const companyNet = totalRevenue - totalAgentCommissions - totalDispoPaid - totalAttorneyFees - totalMiscFees;
+              const revenuePct = Math.min((companyNet / revenueGoal) * 100, 100);
               const netPct = Math.min((totalPersonalNet / netGoal) * 100, 100);
               
               return (
@@ -2536,7 +2547,7 @@ export default function MomentumApp() {
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <p className="text-slate-400 text-xs mb-1">Company Revenue</p>
-                      <p className="text-2xl font-bold text-amber-400">${totalRevenue.toLocaleString()}</p>
+                      <p className="text-2xl font-bold text-amber-400">${companyNet.toLocaleString()}</p>
                       <p className="text-slate-500 text-xs">of ${revenueGoal.toLocaleString()} goal</p>
                       <div className="w-full bg-slate-700 rounded-full h-2 mt-2">
                         <div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${revenuePct}%` }} />
@@ -2554,7 +2565,7 @@ export default function MomentumApp() {
                     </div>
                   </div>
                   {/* Expense Breakdown */}
-                  {(totalPartnerPaid > 0 || totalDispoPaid > 0 || totalAgentCommissions > 0 || totalAttorneyFees > 0) && (
+                  {(totalPartnerPaid > 0 || totalDispoPaid > 0 || totalAgentCommissions > 0 || totalAttorneyFees > 0 || totalMiscFees > 0) && (
                     <div className="border-t border-green-700/30 pt-3 mt-3">
                       <p className="text-slate-400 text-xs mb-2">💸 Paid Out This Year:</p>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
@@ -2580,6 +2591,12 @@ export default function MomentumApp() {
                           <div className="bg-slate-800/50 rounded-lg p-2">
                             <p className="text-slate-500">Attorney Fees</p>
                             <p className="text-red-400 font-semibold">${totalAttorneyFees.toLocaleString()}</p>
+                          </div>
+                        )}
+                        {totalMiscFees > 0 && (
+                          <div className="bg-slate-800/50 rounded-lg p-2">
+                            <p className="text-slate-500">Other Fees</p>
+                            <p className="text-pink-400 font-semibold">${totalMiscFees.toLocaleString()}</p>
                           </div>
                         )}
                       </div>
@@ -2608,13 +2625,15 @@ export default function MomentumApp() {
                   const commission = parseFloat(d.commission_amount || 0);
                   if (d.split_with_user_id) {
                     const splitPct = parseFloat(d.split_percentage || 50);
+                    const miscT = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
                     if (d.user_id === currentUser?.id) {
-                      return sum + (commission * splitPct / 100);
+                      return sum + (commission * splitPct / 100 - miscT);
                     } else {
-                      return sum + (commission * (100 - splitPct) / 100);
+                      return sum + (commission * (100 - splitPct) / 100 - miscT);
                     }
                   }
-                  return sum + commission;
+                  const miscTotal = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
+                  return sum + (commission - miscTotal);
                 }
                 
                 // Wholesale deals: calculate net after all deductions
@@ -2647,7 +2666,8 @@ export default function MomentumApp() {
                   attorneyFee = parseFloat(d.attorney_fee);
                 }
                 
-                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee;
+                const miscFeesTotal = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
+                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee - miscFeesTotal;
                 
                 // Partner split
                 if (d.split_with_user_id) {
@@ -2737,6 +2757,7 @@ export default function MomentumApp() {
                   let realtorCommission = 0;
                   let attorneyFee = 0;
                   let netBeforeSplit = revenue; // Default to revenue for traditional deals
+                  const miscFeesTotal = (deal.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
                   
                   if (!isTraditional) {
                     // Realtor commission (calculated on UC price, not revenue)
@@ -2766,7 +2787,7 @@ export default function MomentumApp() {
                     }
                     
                     // Net after all deductions (before partner split)
-                    netBeforeSplit = netAfterCommission - dispoShare - attorneyFee;
+                    netBeforeSplit = netAfterCommission - dispoShare - attorneyFee - miscFeesTotal;
                     
                     // Partner split
                     if (deal.split_with_user_id) {
@@ -2779,8 +2800,8 @@ export default function MomentumApp() {
                     }
                   }
                   
-                  // My net = revenue - realtor commission - dispo share - attorney fee - partner share
-                  const myNet = revenue - realtorCommission - dispoShare - attorneyFee - partnerShare;
+                  // My net = revenue - realtor commission - dispo share - attorney fee - misc fees - partner share
+                  const myNet = revenue - realtorCommission - dispoShare - attorneyFee - miscFeesTotal - partnerShare;
                   const splitPct = parseFloat(deal.split_percentage || 50);
                   
                   // Bonus detection: if partner got fixed amount higher than standard 50/50 would give
@@ -2793,6 +2814,9 @@ export default function MomentumApp() {
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <p className="text-white font-semibold text-lg">{deal.property_address}</p>
+                            {deal.zillow_url && (
+                              <a href={deal.zillow_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 text-xs">🏠 Zillow</a>
+                            )}
                             <span className={`text-xs px-2 py-0.5 rounded ${isTraditional ? 'bg-blue-600/30 text-blue-300' : 'bg-green-600/30 text-green-300'}`}>
                               {isTraditional ? '🏠 Traditional' : '⚡ Wholesale'}
                             </span>
@@ -2871,13 +2895,16 @@ export default function MomentumApp() {
                             <p className="text-2xl font-bold text-blue-400">${commission.toLocaleString()}</p>
                           ) : currentUser?.role === 'owner' ? (
                             <>
-                              <p className="text-2xl font-bold text-green-400">${revenue.toLocaleString()}</p>
-                              <p className="text-xs text-slate-500">Company Revenue</p>
-                              {(partnerShare > 0 || dispoShare > 0) && (
+                              <p className="text-2xl font-bold text-green-400">${myNet.toLocaleString()}</p>
+                              <p className="text-xs text-slate-500">Company Net</p>
+                              {(partnerShare > 0 || dispoShare > 0 || realtorCommission > 0 || attorneyFee > 0 || miscFeesTotal > 0) && (
                                 <div className="text-xs text-slate-400 mt-1 space-y-0.5">
-                                  {partnerShare > 0 && <p>Partner: -${partnerShare.toLocaleString()}</p>}
+                                  <p className="text-slate-500">Gross: ${revenue.toLocaleString()}</p>
+                                  {realtorCommission > 0 && <p>Agent: -${realtorCommission.toLocaleString()}</p>}
                                   {dispoShare > 0 && <p>Dispo: -${dispoShare.toLocaleString()}</p>}
-                                  <p className="text-green-300 font-semibold">My Net: ${myNet.toLocaleString()}</p>
+                                  {attorneyFee > 0 && <p>Attorney: -${attorneyFee.toLocaleString()}</p>}
+                                  {miscFeesTotal > 0 && <p>Fees: -${miscFeesTotal.toLocaleString()}</p>}
+                                  {partnerShare > 0 && <p>Partner: -${partnerShare.toLocaleString()}</p>}
                                 </div>
                               )}
                             </>
@@ -2890,6 +2917,7 @@ export default function MomentumApp() {
                                 {realtorCommission > 0 && <p>Agent Fee: -${realtorCommission.toLocaleString()}</p>}
                                 {dispoShare > 0 && <p>Dispo: -${dispoShare.toLocaleString()}</p>}
                                 {attorneyFee > 0 && <p>Attorney: -${attorneyFee.toLocaleString()}</p>}
+                                {miscFeesTotal > 0 && <p>Fees: -${miscFeesTotal.toLocaleString()}</p>}
                                 {deal.split_with_user_id && <p>Split ({100-splitPct}/{splitPct}): ${(deal.split_type === 'fixed' ? parseFloat(deal.split_amount || 0) : (netBeforeSplit * (100 - splitPct) / 100)).toLocaleString()}</p>}
                               </div>
                             </>
@@ -2936,7 +2964,9 @@ export default function MomentumApp() {
                                     attorney_fee: deal.attorney_fee || '',
                                     agent_name: deal.agent_name || '',
                                     agent_email: deal.agent_email || '',
-                                    agent_phone: deal.agent_phone || ''
+                                    agent_phone: deal.agent_phone || '',
+                                    zillow_url: deal.zillow_url || '',
+                                    misc_fees: deal.misc_fees || []
                                   });
                                   setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
                                   setShowAddDeal(true);
@@ -3017,6 +3047,17 @@ export default function MomentumApp() {
                         onChange={e => setDealForm(f => ({ ...f, property_address: e.target.value }))}
                         className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
                         placeholder="123 Main St, City, State"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-400 text-sm">Zillow Link <span className="text-slate-500 text-xs">(optional)</span></label>
+                      <input 
+                        type="url"
+                        value={dealForm.zillow_url}
+                        onChange={e => setDealForm(f => ({ ...f, zillow_url: e.target.value }))}
+                        className="w-full mt-1 bg-slate-700 text-white p-3 rounded-lg border border-slate-600"
+                        placeholder="https://www.zillow.com/homedetails/..."
                       />
                     </div>
 
@@ -3326,6 +3367,65 @@ export default function MomentumApp() {
                             </div>
                           </div>
                         )}
+
+                        {/* Miscellaneous Fees Section */}
+                        <div className="border-t border-slate-700 pt-4 mt-2">
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-slate-300 text-sm">💰 Additional Fees <span className="text-slate-500 text-xs">(subtracted from gross)</span></label>
+                            {dealForm.misc_fees.length < 3 && (
+                              <button 
+                                onClick={() => setDealForm(f => ({ ...f, misc_fees: [...f.misc_fees, { name: '', amount: '' }] }))}
+                                className="text-green-400 hover:text-green-300 text-xs font-semibold px-2 py-1 bg-green-600/20 rounded"
+                              >
+                                + Add Fee
+                              </button>
+                            )}
+                          </div>
+                          {dealForm.misc_fees.length === 0 && (
+                            <p className="text-slate-500 text-xs">No additional fees added</p>
+                          )}
+                          {dealForm.misc_fees.map((fee, idx) => (
+                            <div key={idx} className="flex gap-2 items-end mb-2">
+                              <div className="flex-1">
+                                <label className="text-slate-400 text-xs">Fee Name</label>
+                                <input
+                                  type="text"
+                                  value={fee.name}
+                                  onChange={e => {
+                                    const updated = [...dealForm.misc_fees];
+                                    updated[idx] = { ...updated[idx], name: e.target.value };
+                                    setDealForm(f => ({ ...f, misc_fees: updated }));
+                                  }}
+                                  className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm mt-1"
+                                  placeholder="e.g. Title Fee, Wire Fee..."
+                                />
+                              </div>
+                              <div className="w-28">
+                                <label className="text-slate-400 text-xs">Amount ($)</label>
+                                <input
+                                  type="number"
+                                  value={fee.amount}
+                                  onChange={e => {
+                                    const updated = [...dealForm.misc_fees];
+                                    updated[idx] = { ...updated[idx], amount: e.target.value };
+                                    setDealForm(f => ({ ...f, misc_fees: updated }));
+                                  }}
+                                  className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm mt-1"
+                                  placeholder="$"
+                                />
+                              </div>
+                              <button 
+                                onClick={() => {
+                                  const updated = dealForm.misc_fees.filter((_, i) => i !== idx);
+                                  setDealForm(f => ({ ...f, misc_fees: updated }));
+                                }}
+                                className="text-red-400 hover:text-red-300 text-sm pb-2"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </>
                     )}
 
@@ -3554,7 +3654,9 @@ export default function MomentumApp() {
                           property_address: dealForm.property_address,
                           closed_date: dealForm.closed_date,
                           notes: dealForm.notes,
-                          deal_type: dealForm.deal_type
+                          deal_type: dealForm.deal_type,
+                          zillow_url: dealForm.zillow_url || null,
+                          misc_fees: dealForm.misc_fees.filter(f => f.name && f.amount).map(f => ({ name: f.name, amount: parseFloat(f.amount) || 0 }))
                         };
 
                         if (dealForm.deal_type === 'wholesale') {
