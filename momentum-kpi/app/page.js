@@ -2546,7 +2546,7 @@ export default function MomentumApp() {
                   <h3 className="text-green-400 font-bold mb-4">🎯 {dealsYear} Yearly Goals</h3>
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                      <p className="text-slate-400 text-xs mb-1">Company Revenue</p>
+                      <p className="text-slate-400 text-xs mb-1">Company Revenue <span className="relative group inline-block cursor-help">ℹ️<span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-900 text-slate-300 text-xs rounded-lg px-3 py-2 whitespace-nowrap border border-slate-600 z-10 shadow-lg">Total Gross: ${totalRevenue.toLocaleString()}</span></span></p>
                       <p className="text-2xl font-bold text-amber-400">${companyNet.toLocaleString()}</p>
                       <p className="text-slate-500 text-xs">of ${revenueGoal.toLocaleString()} goal</p>
                       <div className="w-full bg-slate-700 rounded-full h-2 mt-2">
@@ -2895,9 +2895,9 @@ export default function MomentumApp() {
                             <p className="text-2xl font-bold text-blue-400">${commission.toLocaleString()}</p>
                           ) : currentUser?.role === 'owner' ? (
                             <>
-                              <p className="text-2xl font-bold text-green-400">${myNet.toLocaleString()}</p>
+                              <p className="text-2xl font-bold text-green-400">${(revenue - realtorCommission - dispoShare - attorneyFee - miscFeesTotal).toLocaleString()}</p>
                               <p className="text-xs text-slate-500">Company Net</p>
-                              {(partnerShare > 0 || dispoShare > 0 || realtorCommission > 0 || attorneyFee > 0 || miscFeesTotal > 0) && (
+                              {(realtorCommission > 0 || dispoShare > 0 || attorneyFee > 0 || miscFeesTotal > 0) && (
                                 <div className="text-xs text-slate-400 mt-1 space-y-0.5">
                                   <p className="text-slate-500">Gross: ${revenue.toLocaleString()}</p>
                                   {realtorCommission > 0 && <p>Agent: -${realtorCommission.toLocaleString()}</p>}
@@ -2905,6 +2905,7 @@ export default function MomentumApp() {
                                   {attorneyFee > 0 && <p>Attorney: -${attorneyFee.toLocaleString()}</p>}
                                   {miscFeesTotal > 0 && <p>Fees: -${miscFeesTotal.toLocaleString()}</p>}
                                   {partnerShare > 0 && <p>Partner: -${partnerShare.toLocaleString()}</p>}
+                                  {partnerShare > 0 && <p className="text-green-400 font-semibold">My Net: ${myNet.toLocaleString()}</p>}
                                 </div>
                               )}
                             </>
@@ -3656,7 +3657,10 @@ export default function MomentumApp() {
                           notes: dealForm.notes,
                           deal_type: dealForm.deal_type,
                           zillow_url: dealForm.zillow_url || null,
-                          misc_fees: dealForm.misc_fees.filter(f => f.name && f.amount).map(f => ({ name: f.name, amount: parseFloat(f.amount) || 0 }))
+                          misc_fees: dealForm.misc_fees.filter(f => f.name && f.amount).map(f => ({ name: f.name, amount: parseFloat(f.amount) || 0 })),
+                          agent_name: dealForm.agent_name || null,
+                          agent_email: dealForm.agent_email || null,
+                          agent_phone: dealForm.agent_phone || null
                         };
 
                         if (dealForm.deal_type === 'wholesale') {
@@ -3803,7 +3807,7 @@ export default function MomentumApp() {
                             try {
                               await db.vipAgents.create({
                                 user_id: currentUser.id,
-                                name: dealForm.agent_name,
+                                agent_name: dealForm.agent_name,
                                 email: dealForm.agent_email || null,
                                 phone: dealForm.agent_phone || null,
                                 deal_closed: dealForm.property_address,
