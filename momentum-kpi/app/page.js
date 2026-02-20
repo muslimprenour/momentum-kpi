@@ -1105,6 +1105,7 @@ export default function MomentumApp() {
     realtor_commission_amount: '',
     attorney_used: false,
     attorney_fee: '',
+    attorney_fee_split: false,
     // Agent info (auto-adds to VIP agents)
     agent_name: '',
     agent_email: '',
@@ -2075,20 +2076,23 @@ export default function MomentumApp() {
                 
                 const netAfterCommission = rev - realtorCommission;
                 
-                if (d.dispo_help) {
-                  if (d.dispo_share_type === 'fixed' && d.dispo_share_amount) {
-                    dispoShare = parseFloat(d.dispo_share_amount);
-                  } else if (d.dispo_share_percentage) {
-                    dispoShare = netAfterCommission * parseFloat(d.dispo_share_percentage) / 100;
-                  }
-                }
-                
                 if (d.attorney_used && d.attorney_fee) {
                   attorneyFee = parseFloat(d.attorney_fee);
                 }
                 
                 const miscFeesTotal = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
-                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee - miscFeesTotal;
+                const netAfterMisc = netAfterCommission - miscFeesTotal;
+                const dispoBase = d.attorney_fee_split ? (netAfterMisc - attorneyFee) : netAfterMisc;
+                
+                if (d.dispo_help) {
+                  if (d.dispo_share_type === 'fixed' && d.dispo_share_amount) {
+                    dispoShare = parseFloat(d.dispo_share_amount);
+                  } else if (d.dispo_share_percentage) {
+                    dispoShare = dispoBase * parseFloat(d.dispo_share_percentage) / 100;
+                  }
+                }
+                
+                const netBeforeSplit = netAfterMisc - attorneyFee - dispoShare;
                 
                 if (d.split_with_user_id) {
                   const splitPct = parseFloat(d.split_percentage || 50);
@@ -2413,7 +2417,7 @@ export default function MomentumApp() {
               </div>
               {currentUser?.role === 'owner' && (
                 <button 
-                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', split_type: 'percentage', split_amount: '', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '', dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '', dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '', realtor_commission_paid: false, realtor_commission_type: 'percentage', realtor_commission_percentage: '', realtor_commission_amount: '', attorney_used: false, attorney_fee: '', agent_name: '', agent_email: '', agent_phone: '', zillow_url: '', misc_fees: [] }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
+                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', split_type: 'percentage', split_amount: '', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '', dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '', dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '', realtor_commission_paid: false, realtor_commission_type: 'percentage', realtor_commission_percentage: '', realtor_commission_amount: '', attorney_used: false, attorney_fee: '', attorney_fee_split: false, agent_name: '', agent_email: '', agent_phone: '', zillow_url: '', misc_fees: [] }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
                 >
                   + Add Deal
@@ -2502,16 +2506,6 @@ export default function MomentumApp() {
                 
                 const netAfterCommission = rev - realtorCommission;
                 
-                // Dispo share
-                if (d.dispo_help) {
-                  if (d.dispo_share_type === 'fixed' && d.dispo_share_amount) {
-                    dispoShare = parseFloat(d.dispo_share_amount);
-                  } else if (d.dispo_share_percentage) {
-                    dispoShare = netAfterCommission * parseFloat(d.dispo_share_percentage) / 100;
-                  }
-                }
-                totalDispoPaid += dispoShare;
-                
                 // Attorney fee
                 if (d.attorney_used && d.attorney_fee) {
                   attorneyFee = parseFloat(d.attorney_fee);
@@ -2520,7 +2514,21 @@ export default function MomentumApp() {
                 
                 const miscFeesTotal = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
                 totalMiscFees += miscFeesTotal;
-                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee - miscFeesTotal;
+                
+                const netAfterMisc = netAfterCommission - miscFeesTotal;
+                const dispoBase = d.attorney_fee_split ? (netAfterMisc - attorneyFee) : netAfterMisc;
+                
+                // Dispo share
+                if (d.dispo_help) {
+                  if (d.dispo_share_type === 'fixed' && d.dispo_share_amount) {
+                    dispoShare = parseFloat(d.dispo_share_amount);
+                  } else if (d.dispo_share_percentage) {
+                    dispoShare = dispoBase * parseFloat(d.dispo_share_percentage) / 100;
+                  }
+                }
+                totalDispoPaid += dispoShare;
+                
+                const netBeforeSplit = netAfterMisc - attorneyFee - dispoShare;
                 
                 // Partner split
                 if (d.split_with_user_id) {
@@ -2652,22 +2660,25 @@ export default function MomentumApp() {
                 
                 const netAfterCommission = rev - realtorCommission;
                 
-                // Dispo share
-                if (d.dispo_help) {
-                  if (d.dispo_share_type === 'fixed' && d.dispo_share_amount) {
-                    dispoShare = parseFloat(d.dispo_share_amount);
-                  } else if (d.dispo_share_percentage) {
-                    dispoShare = netAfterCommission * parseFloat(d.dispo_share_percentage) / 100;
-                  }
-                }
-                
                 // Attorney fee
                 if (d.attorney_used && d.attorney_fee) {
                   attorneyFee = parseFloat(d.attorney_fee);
                 }
                 
                 const miscFeesTotal = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
-                const netBeforeSplit = netAfterCommission - dispoShare - attorneyFee - miscFeesTotal;
+                const netAfterMisc = netAfterCommission - miscFeesTotal;
+                const dispoBase = d.attorney_fee_split ? (netAfterMisc - attorneyFee) : netAfterMisc;
+                
+                // Dispo share
+                if (d.dispo_help) {
+                  if (d.dispo_share_type === 'fixed' && d.dispo_share_amount) {
+                    dispoShare = parseFloat(d.dispo_share_amount);
+                  } else if (d.dispo_share_percentage) {
+                    dispoShare = dispoBase * parseFloat(d.dispo_share_percentage) / 100;
+                  }
+                }
+                
+                const netBeforeSplit = netAfterMisc - attorneyFee - dispoShare;
                 
                 // Partner split
                 if (d.split_with_user_id) {
@@ -2772,22 +2783,26 @@ export default function MomentumApp() {
                     // Net after realtor commission
                     const netAfterCommission = revenue - realtorCommission;
                     
-                    // Dispo share (calculated on net after commission)
-                    if (deal.dispo_help) {
-                      if (deal.dispo_share_type === 'fixed' && deal.dispo_share_amount) {
-                        dispoShare = parseFloat(deal.dispo_share_amount);
-                      } else if (deal.dispo_share_percentage) {
-                        dispoShare = netAfterCommission * parseFloat(deal.dispo_share_percentage) / 100;
-                      }
-                    }
-                    
                     // Attorney fee
                     if (deal.attorney_used && deal.attorney_fee) {
                       attorneyFee = parseFloat(deal.attorney_fee);
                     }
                     
+                    // Net after misc fees
+                    const netAfterMisc = netAfterCommission - miscFeesTotal;
+                    const dispoBase = deal.attorney_fee_split ? (netAfterMisc - attorneyFee) : netAfterMisc;
+                    
+                    // Dispo share
+                    if (deal.dispo_help) {
+                      if (deal.dispo_share_type === 'fixed' && deal.dispo_share_amount) {
+                        dispoShare = parseFloat(deal.dispo_share_amount);
+                      } else if (deal.dispo_share_percentage) {
+                        dispoShare = dispoBase * parseFloat(deal.dispo_share_percentage) / 100;
+                      }
+                    }
+                    
                     // Net after all deductions (before partner split)
-                    netBeforeSplit = netAfterCommission - dispoShare - attorneyFee - miscFeesTotal;
+                    netBeforeSplit = netAfterMisc - attorneyFee - dispoShare;
                     
                     // Partner split
                     if (deal.split_with_user_id) {
@@ -2963,6 +2978,7 @@ export default function MomentumApp() {
                                     realtor_commission_amount: deal.realtor_commission_amount || '',
                                     attorney_used: deal.attorney_used || false,
                                     attorney_fee: deal.attorney_fee || '',
+                                    attorney_fee_split: deal.attorney_fee_split || false,
                                     agent_name: deal.agent_name || '',
                                     agent_email: deal.agent_email || '',
                                     agent_phone: deal.agent_phone || '',
@@ -3366,6 +3382,17 @@ export default function MomentumApp() {
                                 placeholder="Attorney fee amount ($)"
                               />
                             </div>
+                            {dealForm.dispo_help && (
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input 
+                                  type="checkbox"
+                                  checked={dealForm.attorney_fee_split}
+                                  onChange={e => setDealForm(f => ({ ...f, attorney_fee_split: e.target.checked }))}
+                                  className="w-4 h-4 rounded"
+                                />
+                                <span className="text-slate-300 text-sm">Attorney fee split with dispo partner</span>
+                              </label>
+                            )}
                           </div>
                         )}
 
@@ -3692,6 +3719,7 @@ export default function MomentumApp() {
                           // Attorney fee fields
                           dealData.attorney_used = dealForm.attorney_used || false;
                           dealData.attorney_fee = dealForm.attorney_used && dealForm.attorney_fee ? parseFloat(dealForm.attorney_fee) : null;
+                          dealData.attorney_fee_split = dealForm.attorney_used && dealForm.dispo_help ? dealForm.attorney_fee_split : false;
                           dealData.sale_price = null;
                           dealData.commission_amount = null;
                         } else {
@@ -3723,6 +3751,7 @@ export default function MomentumApp() {
                           dealData.realtor_commission_amount = null;
                           dealData.attorney_used = false;
                           dealData.attorney_fee = null;
+                          dealData.attorney_fee_split = false;
                         }
 
                         // Handle deal save with file uploads
@@ -3811,7 +3840,10 @@ export default function MomentumApp() {
                                 email: dealForm.agent_email || null,
                                 phone: dealForm.agent_phone || null,
                                 deal_closed: dealForm.property_address,
-                                notes: `Auto-added from deal: ${dealForm.property_address}`
+                                review_given: false,
+                                gift_sent: false,
+                                created_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
                               });
                             } catch (vipErr) {
                               console.log('Could not auto-add VIP agent:', vipErr);
