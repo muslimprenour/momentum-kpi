@@ -703,7 +703,7 @@ const NotesApp = ({ userId, notes, setNotes }) => {
 const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMembers = [], isOwner = false }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({ agent_name: '', phone: '', email: '', deal_closed: '', review_given: false, gift_sent: false });
+  const [form, setForm] = useState({ agent_name: '', phone: '', email: '', deal_closed: '', review_given: false, gift_sent: false, followup_days: '' });
   const [logAgentId, setLogAgentId] = useState(null); // Which agent's log form is open
   const [logNote, setLogNote] = useState('');
   const [expandedLogId, setExpandedLogId] = useState(null); // Which agent's history is expanded
@@ -747,7 +747,7 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
   };
 
   const resetForm = () => {
-    setForm({ agent_name: '', phone: '', email: '', deal_closed: '', review_given: false, gift_sent: false });
+    setForm({ agent_name: '', phone: '', email: '', deal_closed: '', review_given: false, gift_sent: false, followup_days: '' });
     setIsAdding(false);
     setEditingId(null);
   };
@@ -756,6 +756,7 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
     if (!form.agent_name.trim()) return;
     
     try {
+      const followupDaysVal = form.followup_days ? parseInt(form.followup_days) : null;
       if (editingId) {
         // Update existing
         const updates = {
@@ -765,6 +766,7 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
           deal_closed: form.deal_closed,
           review_given: form.review_given,
           gift_sent: form.gift_sent,
+          followup_days: followupDaysVal,
           updated_at: new Date().toISOString()
         };
         await db.vipAgents.update(editingId, updates);
@@ -779,6 +781,7 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
           deal_closed: form.deal_closed,
           review_given: form.review_given,
           gift_sent: form.gift_sent,
+          followup_days: followupDaysVal,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
@@ -800,7 +803,8 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
       email: agent.email || '',
       deal_closed: agent.deal_closed || '',
       review_given: agent.review_given || false,
-      gift_sent: agent.gift_sent || false
+      gift_sent: agent.gift_sent || false,
+      followup_days: agent.followup_days || ''
     });
     setEditingId(agent.id);
     setIsAdding(true);
@@ -897,6 +901,20 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
                 <span className="text-slate-300 text-sm">Gift Sent? 🎁</span>
               </label>
             </div>
+            <div>
+              <label className="text-slate-400 text-xs">Follow-Up Frequency (days)</label>
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="number"
+                  min="1"
+                  value={form.followup_days}
+                  onChange={(e) => setForm(prev => ({ ...prev, followup_days: e.target.value }))}
+                  placeholder="14"
+                  className="w-24 bg-slate-600 text-white rounded-lg px-3 py-2 text-sm border border-slate-500 focus:border-amber-500 focus:outline-none"
+                />
+                <span className="text-slate-500 text-xs">Default: 14 days</span>
+              </div>
+            </div>
             <div className="flex gap-2 pt-2">
               <button 
                 onClick={resetForm} 
@@ -955,14 +973,25 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
                       </a>
                     )}
                   </div>
+                  {/* Added Date & Follow-up Frequency */}
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-xs text-slate-600">📅 Added {new Date(agent.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                    <span className="text-xs text-slate-600">•</span>
+                    <p className="text-xs text-slate-600">🔄 Every {agent.followup_days || 14}d</p>
+                  </div>
+                  
                   {/* Follow-Up Contact Tracker */}
                   {(() => {
-                    const days = daysSinceContact(agent.last_contact_date);
-                    const isOverdue = days !== null && days > 14;
-                    const isWarning = days !== null && days > 10;
+                    const lastDate = agent.last_contact_date || agent.created_at;
+                    const days = daysSinceContact(lastDate);
+                    const freq = agent.followup_days || 14;
+                    const warnAt = Math.max(freq - 4, Math.floor(freq * 0.7));
+                    const isOverdue = days !== null && days >= freq;
+                    const isWarning = days !== null && days >= warnAt;
                     const contactLog = agent.contact_log || [];
                     const isExpanded = expandedLogId === agent.id;
                     const isLogging = logAgentId === agent.id;
+                    const neverContacted = !agent.last_contact_date;
                     return (
                       <div className="mt-2 pt-2 border-t border-slate-600/30">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -972,13 +1001,9 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
                           >
                             📞 Log Follow-Up
                           </button>
-                          {days !== null ? (
-                            <span className={`text-xs ${isOverdue ? 'text-red-400 font-semibold' : isWarning ? 'text-yellow-400' : 'text-slate-500'}`}>
-                              Last: {days === 0 ? 'Today' : `${days}d ago`} {isOverdue ? '⚠️ overdue!' : ''}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-slate-600">No contact logged</span>
-                          )}
+                          <span className={`text-xs ${isOverdue ? 'text-red-400 font-semibold' : isWarning ? 'text-yellow-400' : 'text-slate-500'}`}>
+                            {neverContacted ? `No contact yet (${days}d since added)` : `Last: ${days === 0 ? 'Today' : `${days}d ago`}`} {isOverdue ? '⚠️ overdue!' : ''}
+                          </span>
                           {contactLog.length > 0 && (
                             <button
                               onClick={() => setExpandedLogId(isExpanded ? null : agent.id)}
@@ -1011,12 +1036,26 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
                         {isExpanded && contactLog.length > 0 && (
                           <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
                             {contactLog.map((entry, i) => (
-                              <div key={i} className="flex items-start gap-2 text-xs bg-slate-800/50 rounded px-2 py-1.5">
+                              <div key={i} className="flex items-center gap-2 text-xs bg-slate-800/50 rounded px-2 py-1.5 group">
                                 <span className="text-slate-500 whitespace-nowrap">
-                                  {new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  {new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{' '}
+                                  {new Date(entry.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                                 </span>
                                 <span className="text-slate-300 flex-1">{entry.note}</span>
                                 <span className="text-blue-400 whitespace-nowrap">{entry.user_name}</span>
+                                <button
+                                  onClick={async () => {
+                                    const updated = [...contactLog];
+                                    updated.splice(i, 1);
+                                    const newLastContact = updated.length > 0 ? updated[0].date : null;
+                                    await db.vipAgents.update(agent.id, { contact_log: updated, last_contact_date: newLastContact, updated_at: new Date().toISOString() });
+                                    setVipAgents(prev => prev.map(a => a.id === agent.id ? { ...a, contact_log: updated, last_contact_date: newLastContact } : a));
+                                  }}
+                                  className="text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 ml-1"
+                                  title="Delete this log"
+                                >
+                                  ✕
+                                </button>
                               </div>
                             ))}
                           </div>
@@ -2159,6 +2198,68 @@ export default function MomentumApp() {
               )}
               <button onClick={openProfileModal} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium">✏️ Edit Profile</button>
             </div>
+
+            {/* Overdue VIP Agent Follow-Ups */}
+            {(() => {
+              const overdueAgents = vipAgents.filter(a => {
+                const lastDate = a.last_contact_date || a.created_at;
+                if (!lastDate) return false;
+                const days = Math.floor((new Date() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+                const freq = a.followup_days || 14;
+                return days >= freq;
+              }).sort((a, b) => {
+                const daysA = Math.floor((new Date() - new Date(a.last_contact_date || a.created_at)) / (1000 * 60 * 60 * 24));
+                const daysB = Math.floor((new Date() - new Date(b.last_contact_date || b.created_at)) / (1000 * 60 * 60 * 24));
+                const freqA = a.followup_days || 14;
+                const freqB = b.followup_days || 14;
+                return (daysB - freqB) - (daysA - freqA); // Most overdue first
+              });
+              
+              if (overdueAgents.length === 0) return null;
+              
+              return (
+                <div className="bg-gradient-to-r from-red-900/30 to-red-800/20 rounded-2xl md:rounded-xl p-4 border border-red-500/30">
+                  <h3 className="text-red-400 font-bold mb-3 flex items-center gap-2">
+                    <span>⚠️</span> Overdue Follow-Ups <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{overdueAgents.length}</span>
+                  </h3>
+                  <div className="space-y-2">
+                    {overdueAgents.map(agent => {
+                      const lastDate = agent.last_contact_date || agent.created_at;
+                      const days = Math.floor((new Date() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+                      const freq = agent.followup_days || 14;
+                      const overdueDays = days - freq;
+                      const memberName = currentUser?.role === 'owner' && agent.user_id !== currentUser?.id 
+                        ? (teamMembers.find(m => m.id === agent.user_id)?.display_name || teamMembers.find(m => m.id === agent.user_id)?.name || '')
+                        : '';
+                      return (
+                        <div key={agent.id} className="flex items-center gap-3 bg-slate-800/80 rounded-lg px-3 py-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-semibold text-sm truncate">{agent.agent_name}</span>
+                              {memberName && <span className="text-blue-400 text-xs">({memberName})</span>}
+                            </div>
+                            <p className="text-red-400 text-xs mt-0.5">
+                              {days}d since {agent.last_contact_date ? 'last contact' : 'added'} • {overdueDays}d overdue (every {freq}d)
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {agent.phone && (
+                              <a href={`tel:${agent.phone}`} className="text-xs px-2 py-1 rounded bg-green-600/20 text-green-400 hover:bg-green-600/40">📞 Call</a>
+                            )}
+                            <button
+                              onClick={() => setCurrentTab('personal')}
+                              className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600"
+                            >
+                              View
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Combined Revenue/Net Widget - Only shown if user has enabled it */}
             {showRevenueOnHome && (() => {
