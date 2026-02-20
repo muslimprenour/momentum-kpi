@@ -808,6 +808,7 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
     });
     setEditingId(agent.id);
     setIsAdding(true);
+    setTimeout(() => document.getElementById('vip-edit-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
   };
 
   const handleDelete = async (agentId) => {
@@ -838,7 +839,7 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
         </h3>
         {!isAdding && (
           <button 
-            onClick={() => setIsAdding(true)} 
+            onClick={() => { setIsAdding(true); setTimeout(() => document.getElementById('vip-edit-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100); }} 
             className="bg-amber-500 hover:bg-amber-400 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
           >
             <span>+</span> Add VIP
@@ -848,7 +849,7 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
 
       {/* Add/Edit Form */}
       {isAdding && (
-        <div className="bg-slate-700/50 rounded-xl p-4 mb-4 border border-slate-600/50">
+        <div id="vip-edit-form" className="bg-slate-700/50 rounded-xl p-4 mb-4 border border-slate-600/50">
           <h4 className="text-white font-medium mb-3">{editingId ? 'Edit VIP Agent' : 'Add VIP Agent'}</h4>
           <div className="space-y-3">
             <input
@@ -2247,7 +2248,7 @@ export default function MomentumApp() {
                               <a href={`tel:${agent.phone}`} className="text-xs px-2 py-1 rounded bg-green-600/20 text-green-400 hover:bg-green-600/40">📞 Call</a>
                             )}
                             <button
-                              onClick={() => setCurrentTab('personal')}
+                              onClick={() => document.getElementById('vip-agents-section')?.scrollIntoView({ behavior: 'smooth' })}
                               className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600"
                             >
                               View
@@ -2534,6 +2535,7 @@ export default function MomentumApp() {
             />
 
             {/* VIP Agents Section */}
+            <div id="vip-agents-section">
             <VIPAgentsSection 
               userId={currentUser?.id}
               vipAgents={vipAgents}
@@ -2542,6 +2544,7 @@ export default function MomentumApp() {
               teamMembers={teamMembers}
               isOwner={currentUser?.role === 'owner'}
             />
+            </div>
           </div>
         )}
 
