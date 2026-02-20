@@ -708,11 +708,11 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
   const [logNote, setLogNote] = useState('');
   const [expandedLogId, setExpandedLogId] = useState(null); // Which agent's history is expanded
 
-  // Count deals per agent name from deals data
-  const getAgentDealCount = (agentName) => {
-    if (!agentName || !deals.length) return 0;
+  // Get deals for this agent (with zillow links)
+  const getAgentDeals = (agentName) => {
+    if (!agentName || !deals.length) return [];
     const name = agentName.toLowerCase().trim();
-    return deals.filter(d => d.agent_name && d.agent_name.toLowerCase().trim() === name).length;
+    return deals.filter(d => d.agent_name && d.agent_name.toLowerCase().trim() === name);
   };
 
   // Get team member name from user_id
@@ -949,19 +949,47 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h4 className="text-white font-semibold truncate">{agent.agent_name}</h4>
-                    {(() => {
-                      const count = getAgentDealCount(agent.agent_name);
-                      return count > 0 ? (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-green-600/30 text-green-400 font-semibold">{count} deal{count > 1 ? 's' : ''}</span>
-                      ) : null;
-                    })()}
                   </div>
                   {isOwner && agent.user_id !== userId && (
                     <p className="text-xs text-blue-400 mt-0.5">👤 {getMemberName(agent.user_id)}</p>
                   )}
-                  {agent.deal_closed && (
-                    <p className="text-amber-400 text-xs mt-0.5 truncate">🏠 {agent.deal_closed}</p>
-                  )}
+                  {/* Deal Count & Properties */}
+                  {(() => {
+                    const agentDeals = getAgentDeals(agent.agent_name);
+                    const count = agentDeals.length;
+                    if (count === 0 && agent.deal_closed) {
+                      return <p className="text-amber-400 text-xs mt-1 truncate">🏠 {agent.deal_closed}</p>;
+                    }
+                    if (count === 0) return null;
+                    const milestoneEmoji = count >= 10 ? '👑' : count >= 5 ? '💎' : count >= 3 ? '🔥' : '⚡';
+                    const milestoneBg = count >= 10 ? 'from-yellow-500/30 to-amber-600/20 border-yellow-500/40' : count >= 5 ? 'from-purple-500/30 to-blue-600/20 border-purple-500/40' : count >= 3 ? 'from-orange-500/30 to-red-600/20 border-orange-500/40' : 'from-green-500/30 to-emerald-600/20 border-green-500/40';
+                    const milestoneText = count >= 10 ? 'text-yellow-400' : count >= 5 ? 'text-purple-400' : count >= 3 ? 'text-orange-400' : 'text-green-400';
+                    return (
+                      <div className={`mt-2 rounded-lg p-2 bg-gradient-to-r ${milestoneBg} border`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg">{milestoneEmoji}</span>
+                          <span className={`font-bold text-sm ${milestoneText}`}>{count} Deal{count > 1 ? 's' : ''} Closed Together!</span>
+                          {count >= 3 && <span className="text-xs animate-pulse">🤝</span>}
+                        </div>
+                        <div className="space-y-0.5">
+                          {agentDeals.slice(0, 5).map((d, i) => (
+                            <div key={i} className="flex items-center gap-1.5 text-xs">
+                              <span className="text-slate-500">•</span>
+                              {d.zillow_url ? (
+                                <a href={d.zillow_url} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300 hover:underline truncate">
+                                  🏠 {d.property_address}
+                                </a>
+                              ) : (
+                                <span className="text-slate-400 truncate">{d.property_address}</span>
+                              )}
+                              <span className="text-slate-600 whitespace-nowrap">${(parseFloat(d.revenue || d.commission_amount || 0) / 1000).toFixed(0)}k</span>
+                            </div>
+                          ))}
+                          {count > 5 && <p className="text-slate-500 text-xs pl-3">+{count - 5} more</p>}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div className="flex flex-wrap gap-2 mt-1">
                     {agent.phone && (
                       <a href={`tel:${agent.phone}`} className="text-slate-400 text-xs hover:text-blue-400 transition-colors">
