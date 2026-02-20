@@ -163,6 +163,7 @@ const db = {
   },
   vipAgents: {
     getByUser: (userId) => supabaseFetch(`vip_agents?user_id=eq.${userId}&select=*&order=created_at.desc`),
+    getByUsers: (userIds) => supabaseFetch(`vip_agents?user_id=in.(${userIds.join(',')})&select=*&order=created_at.desc`),
     create: (agent) => supabaseFetch('vip_agents', { method: 'POST', body: [agent] }),
     update: (agentId, updates) => supabaseFetch(`vip_agents?id=eq.${agentId}`, { method: 'PATCH', body: updates }),
     delete: (agentId) => supabaseFetch(`vip_agents?id=eq.${agentId}`, { method: 'DELETE' }),
@@ -699,10 +700,51 @@ const NotesApp = ({ userId, notes, setNotes }) => {
 };
 
 // VIP Agents Section for Personal Tab
-const VIPAgentsSection = ({ userId, vipAgents, setVipAgents }) => {
+const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMembers = [], isOwner = false }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ agent_name: '', phone: '', email: '', deal_closed: '', review_given: false, gift_sent: false });
+  const [logAgentId, setLogAgentId] = useState(null); // Which agent's log form is open
+  const [logNote, setLogNote] = useState('');
+  const [expandedLogId, setExpandedLogId] = useState(null); // Which agent's history is expanded
+
+  // Count deals per agent name from deals data
+  const getAgentDealCount = (agentName) => {
+    if (!agentName || !deals.length) return 0;
+    const name = agentName.toLowerCase().trim();
+    return deals.filter(d => d.agent_name && d.agent_name.toLowerCase().trim() === name).length;
+  };
+
+  // Get team member name from user_id
+  const getMemberName = (memberId) => {
+    const m = teamMembers.find(t => t.id === memberId);
+    return m ? (m.display_name || m.name || 'Unknown') : '';
+  };
+
+  // Days since last contact
+  const daysSinceContact = (dateStr) => {
+    if (!dateStr) return null;
+    const diff = (new Date() - new Date(dateStr)) / (1000 * 60 * 60 * 24);
+    return Math.floor(diff);
+  };
+
+  // Log a follow-up contact
+  const logContact = async (agent) => {
+    const now = new Date().toISOString();
+    const currentMember = teamMembers.find(m => m.id === userId);
+    const logEntry = {
+      date: now,
+      note: logNote.trim() || 'Followed up',
+      user_id: userId,
+      user_name: currentMember?.display_name || currentMember?.name || 'Unknown'
+    };
+    const existingLog = agent.contact_log || [];
+    const updatedLog = [logEntry, ...existingLog];
+    await db.vipAgents.update(agent.id, { contact_log: updatedLog, last_contact_date: now, updated_at: now });
+    setVipAgents(prev => prev.map(a => a.id === agent.id ? { ...a, contact_log: updatedLog, last_contact_date: now } : a));
+    setLogAgentId(null);
+    setLogNote('');
+  };
 
   const resetForm = () => {
     setForm({ agent_name: '', phone: '', email: '', deal_closed: '', review_given: false, gift_sent: false });
@@ -886,7 +928,18 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents }) => {
             <div key={agent.id} className="bg-slate-700/50 rounded-xl p-3 border border-slate-600/30">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-white font-semibold truncate">{agent.agent_name}</h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-white font-semibold truncate">{agent.agent_name}</h4>
+                    {(() => {
+                      const count = getAgentDealCount(agent.agent_name);
+                      return count > 0 ? (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-green-600/30 text-green-400 font-semibold">{count} deal{count > 1 ? 's' : ''}</span>
+                      ) : null;
+                    })()}
+                  </div>
+                  {isOwner && agent.user_id !== userId && (
+                    <p className="text-xs text-blue-400 mt-0.5">👤 {getMemberName(agent.user_id)}</p>
+                  )}
                   {agent.deal_closed && (
                     <p className="text-amber-400 text-xs mt-0.5 truncate">🏠 {agent.deal_closed}</p>
                   )}
@@ -902,6 +955,75 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents }) => {
                       </a>
                     )}
                   </div>
+                  {/* Follow-Up Contact Tracker */}
+                  {(() => {
+                    const days = daysSinceContact(agent.last_contact_date);
+                    const isOverdue = days !== null && days > 14;
+                    const isWarning = days !== null && days > 10;
+                    const contactLog = agent.contact_log || [];
+                    const isExpanded = expandedLogId === agent.id;
+                    const isLogging = logAgentId === agent.id;
+                    return (
+                      <div className="mt-2 pt-2 border-t border-slate-600/30">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => { setLogAgentId(isLogging ? null : agent.id); setLogNote(''); }}
+                            className="text-xs px-2 py-0.5 rounded bg-blue-600/20 text-blue-400 hover:bg-blue-600/40 transition-colors"
+                          >
+                            📞 Log Follow-Up
+                          </button>
+                          {days !== null ? (
+                            <span className={`text-xs ${isOverdue ? 'text-red-400 font-semibold' : isWarning ? 'text-yellow-400' : 'text-slate-500'}`}>
+                              Last: {days === 0 ? 'Today' : `${days}d ago`} {isOverdue ? '⚠️ overdue!' : ''}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-600">No contact logged</span>
+                          )}
+                          {contactLog.length > 0 && (
+                            <button
+                              onClick={() => setExpandedLogId(isExpanded ? null : agent.id)}
+                              className="text-xs text-slate-400 hover:text-white transition-colors ml-auto"
+                            >
+                              {isExpanded ? '▲ Hide' : `▼ History (${contactLog.length})`}
+                            </button>
+                          )}
+                        </div>
+                        {/* Log Follow-Up Form */}
+                        {isLogging && (
+                          <div className="flex gap-2 mt-2">
+                            <input
+                              type="text"
+                              value={logNote}
+                              onChange={e => setLogNote(e.target.value)}
+                              placeholder="Quick note (e.g. called, sent text, left VM...)"
+                              className="flex-1 bg-slate-600 text-white rounded px-2 py-1 text-xs border border-slate-500"
+                              onKeyDown={e => e.key === 'Enter' && logContact(agent)}
+                            />
+                            <button
+                              onClick={() => logContact(agent)}
+                              className="text-xs px-2 py-1 rounded bg-green-600 text-white hover:bg-green-500"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        )}
+                        {/* Contact History */}
+                        {isExpanded && contactLog.length > 0 && (
+                          <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                            {contactLog.map((entry, i) => (
+                              <div key={i} className="flex items-start gap-2 text-xs bg-slate-800/50 rounded px-2 py-1.5">
+                                <span className="text-slate-500 whitespace-nowrap">
+                                  {new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </span>
+                                <span className="text-slate-300 flex-1">{entry.note}</span>
+                                <span className="text-blue-400 whitespace-nowrap">{entry.user_name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="flex items-center gap-1">
                   <button 
@@ -1187,6 +1309,11 @@ export default function MomentumApp() {
     if (currentUser && organization) loadTeamData();
   }, [currentTab]);
 
+  useEffect(() => {
+    // Reload VIP agents when team members load (owner needs all team VIPs)
+    if (currentUser?.role === 'owner' && teamMembers.length > 0) loadVipAgents();
+  }, [teamMembers.length]);
+
   const loadUserNotes = async () => {
     if (!currentUser) return;
     const { data } = await db.notes.getByUser(currentUser.id);
@@ -1196,8 +1323,15 @@ export default function MomentumApp() {
   const loadVipAgents = async () => {
     if (!currentUser) return;
     try {
-      const { data, error } = await db.vipAgents.getByUser(currentUser.id);
-      if (data && !error) setVipAgents(data);
+      if (currentUser.role === 'owner' && teamMembers.length > 0) {
+        const allIds = teamMembers.map(m => m.id);
+        if (!allIds.includes(currentUser.id)) allIds.push(currentUser.id);
+        const { data, error } = await db.vipAgents.getByUsers(allIds);
+        if (data && !error) setVipAgents(data);
+      } else {
+        const { data, error } = await db.vipAgents.getByUser(currentUser.id);
+        if (data && !error) setVipAgents(data);
+      }
     } catch (e) {
       console.log('VIP agents table not ready yet');
     }
@@ -2303,6 +2437,9 @@ export default function MomentumApp() {
               userId={currentUser?.id}
               vipAgents={vipAgents}
               setVipAgents={setVipAgents}
+              deals={deals}
+              teamMembers={teamMembers}
+              isOwner={currentUser?.role === 'owner'}
             />
           </div>
         )}
@@ -3235,13 +3372,29 @@ export default function MomentumApp() {
                         {dealForm.dispo_help && (
                           <div className="space-y-3 bg-slate-700/50 p-3 rounded-lg">
                             <div className="grid grid-cols-1 gap-3">
-                              <input
-                                type="text"
-                                value={dealForm.dispo_name}
-                                onChange={e => setDealForm(f => ({ ...f, dispo_name: e.target.value }))}
-                                className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm"
-                                placeholder="Dispo wholesaler name"
-                              />
+                              <div>
+                                <input
+                                  type="text"
+                                  list="dispo-suggestions"
+                                  value={dealForm.dispo_name}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setDealForm(f => ({ ...f, dispo_name: val }));
+                                    // Auto-fill from past deals
+                                    const match = deals.find(d => d.dispo_name && d.dispo_name.toLowerCase() === val.toLowerCase());
+                                    if (match) {
+                                      setDealForm(f => ({ ...f, dispo_name: val, dispo_email: match.dispo_email || f.dispo_email, dispo_phone: match.dispo_phone || f.dispo_phone }));
+                                    }
+                                  }}
+                                  className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm"
+                                  placeholder="Dispo wholesaler name"
+                                />
+                                <datalist id="dispo-suggestions">
+                                  {[...new Map(deals.filter(d => d.dispo_name).map(d => [d.dispo_name.toLowerCase(), d.dispo_name])).values()].map(name => (
+                                    <option key={name} value={name} />
+                                  ))}
+                                </datalist>
+                              </div>
                               <input
                                 type="email"
                                 value={dealForm.dispo_email}
@@ -3465,11 +3618,30 @@ export default function MomentumApp() {
                           <label className="text-slate-400 text-xs">Agent Name</label>
                           <input
                             type="text"
+                            list="agent-suggestions"
                             value={dealForm.agent_name}
-                            onChange={e => setDealForm(f => ({ ...f, agent_name: e.target.value }))}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setDealForm(f => ({ ...f, agent_name: val }));
+                              // Auto-fill from past deals
+                              const match = deals.find(d => d.agent_name && d.agent_name.toLowerCase() === val.toLowerCase());
+                              if (match) {
+                                setDealForm(f => ({ ...f, agent_name: val, agent_email: match.agent_email || f.agent_email, agent_phone: match.agent_phone || f.agent_phone }));
+                              }
+                              // Also check VIP agents
+                              const vipMatch = vipAgents.find(a => a.agent_name && a.agent_name.toLowerCase() === val.toLowerCase());
+                              if (vipMatch) {
+                                setDealForm(f => ({ ...f, agent_name: val, agent_email: vipMatch.email || f.agent_email, agent_phone: vipMatch.phone || f.agent_phone }));
+                              }
+                            }}
                             className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm mt-1"
                             placeholder="Agent's full name"
                           />
+                          <datalist id="agent-suggestions">
+                            {[...new Map([...deals.filter(d => d.agent_name).map(d => [d.agent_name.toLowerCase(), d.agent_name]), ...vipAgents.filter(a => a.agent_name).map(a => [a.agent_name.toLowerCase(), a.agent_name])]).values()].map(name => (
+                              <option key={name} value={name} />
+                            ))}
+                          </datalist>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
@@ -3832,22 +4004,39 @@ export default function MomentumApp() {
                           }
                           
                           // Auto-add agent to VIP agents if agent info provided
-                          if (dealForm.agent_name && !editingDeal) {
-                            try {
-                              await db.vipAgents.create({
-                                user_id: currentUser.id,
-                                agent_name: dealForm.agent_name,
-                                email: dealForm.agent_email || null,
-                                phone: dealForm.agent_phone || null,
-                                deal_closed: dealForm.property_address,
-                                review_given: false,
-                                gift_sent: false,
-                                created_at: new Date().toISOString(),
-                                updated_at: new Date().toISOString()
-                              });
-                            } catch (vipErr) {
-                              console.log('Could not auto-add VIP agent:', vipErr);
+                          if (dealForm.agent_name) {
+                            const dealUserId = editingDeal?.user_id || currentUser.id;
+                            const partnerId = dealForm.split_with_user_id;
+                            // Collect unique user IDs to add VIP for (deal owner, partner, and current user/owner)
+                            const vipUserIds = new Set([dealUserId]);
+                            if (partnerId) vipUserIds.add(partnerId);
+                            if (currentUser.role === 'owner') vipUserIds.add(currentUser.id);
+                            
+                            for (const uid of vipUserIds) {
+                              try {
+                                // Check if this agent already exists for this user
+                                const { data: existing } = await db.vipAgents.getByUser(uid);
+                                const alreadyExists = existing?.some(a => 
+                                  a.agent_name?.toLowerCase().trim() === dealForm.agent_name.toLowerCase().trim()
+                                );
+                                if (!alreadyExists) {
+                                  await db.vipAgents.create({
+                                    user_id: uid,
+                                    agent_name: dealForm.agent_name,
+                                    email: dealForm.agent_email || null,
+                                    phone: dealForm.agent_phone || null,
+                                    deal_closed: dealForm.property_address,
+                                    review_given: false,
+                                    gift_sent: false,
+                                    created_at: new Date().toISOString(),
+                                    updated_at: new Date().toISOString()
+                                  });
+                                }
+                              } catch (vipErr) {
+                                console.error('Could not auto-add VIP agent for user ' + uid + ':', vipErr);
+                              }
                             }
+                            loadVipAgents();
                           }
                           
                           setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
