@@ -4005,36 +4005,63 @@ export default function MomentumApp() {
                           
                           // Auto-add agent to VIP agents if agent info provided
                           if (dealForm.agent_name) {
-                            const dealUserId = editingDeal?.user_id || currentUser.id;
-                            const partnerId = dealForm.split_with_user_id;
-                            // Collect unique user IDs to add VIP for (deal owner, partner, and current user/owner)
-                            const vipUserIds = new Set([dealUserId]);
-                            if (partnerId) vipUserIds.add(partnerId);
-                            if (currentUser.role === 'owner') vipUserIds.add(currentUser.id);
+                            // If there's a split partner, they sourced the deal — add VIP to their list
+                            // Owner already sees all team VIP agents, so only ONE entry needed org-wide
+                            // If no split partner (solo deal), add to primary rep's list
+                            const vipUserId = dealForm.split_with_user_id || (editingDeal?.user_id || currentUser.id);
                             
-                            for (const uid of vipUserIds) {
-                              try {
-                                // Check if this agent already exists for this user
-                                const { data: existing } = await db.vipAgents.getByUser(uid);
-                                const alreadyExists = existing?.some(a => 
-                                  a.agent_name?.toLowerCase().trim() === dealForm.agent_name.toLowerCase().trim()
-                                );
-                                if (!alreadyExists) {
-                                  await db.vipAgents.create({
-                                    user_id: uid,
-                                    agent_name: dealForm.agent_name,
-                                    email: dealForm.agent_email || null,
-                                    phone: dealForm.agent_phone || null,
-                                    deal_closed: dealForm.property_address,
-                                    review_given: false,
-                                    gift_sent: false,
-                                    created_at: new Date().toISOString(),
-                                    updated_at: new Date().toISOString()
-                                  });
-                                }
-                              } catch (vipErr) {
-                                console.error('Could not auto-add VIP agent for user ' + uid + ':', vipErr);
+                            try {
+                              // Check ALL org VIP agents to avoid any duplicates
+                              const allOrgIds = teamMembers.map(m => m.id);
+                              if (!allOrgIds.includes(currentUser.id)) allOrgIds.push(currentUser.id);
+                              const { data: allVips, error: vipFetchErr } = allOrgIds.length > 0 
+                                ? await db.vipAgents.getByUsers(allOrgIds)
+                                : await db.vipAgents.getByUser(currentUser.id);
+                              
+                              if (vipFetchErr) {
+                                console.error('VIP fetch error:', vipFetchErr);
                               }
+                              
+                              const agentNameLower = dealForm.agent_name.toLowerCase().trim();
+                              const alreadyExists = (allVips || []).some(a => 
+                                a.agent_name?.toLowerCase().trim() === agentNameLower
+                              );
+                              
+                              if (!alreadyExists) {
+                                const { data: createResult, error: createErr } = await db.vipAgents.create({
+                                  user_id: vipUserId,
+                                  agent_name: dealForm.agent_name,
+                                  email: dealForm.agent_email || null,
+                                  phone: dealForm.agent_phone || null,
+                                  deal_closed: dealForm.property_address,
+                                  review_given: false,
+                                  gift_sent: false,
+                                  contact_log: [],
+                                  created_at: new Date().toISOString(),
+                                  updated_at: new Date().toISOString()
+                                });
+                                if (createErr) {
+                                  console.error('VIP create error:', createErr);
+                                  // If RLS blocks insert for other user, fall back to current user
+                                  if (vipUserId !== currentUser.id) {
+                                    console.log('Retrying VIP create under current user...');
+                                    await db.vipAgents.create({
+                                      user_id: currentUser.id,
+                                      agent_name: dealForm.agent_name,
+                                      email: dealForm.agent_email || null,
+                                      phone: dealForm.agent_phone || null,
+                                      deal_closed: dealForm.property_address,
+                                      review_given: false,
+                                      gift_sent: false,
+                                      contact_log: [],
+                                      created_at: new Date().toISOString(),
+                                      updated_at: new Date().toISOString()
+                                    });
+                                  }
+                                }
+                              }
+                            } catch (vipErr) {
+                              console.error('Could not auto-add VIP agent:', vipErr);
                             }
                             loadVipAgents();
                           }
