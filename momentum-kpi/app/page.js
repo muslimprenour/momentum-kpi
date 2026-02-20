@@ -1250,6 +1250,8 @@ export default function MomentumApp() {
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [signupForm, setSignupForm] = useState({ name: '', email: '', password: '', confirm: '', inviteCode: '', orgName: '' });
   const [forgotEmail, setForgotEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [currentTab, setCurrentTab] = useState('personal');
@@ -1377,9 +1379,31 @@ export default function MomentumApp() {
   };
 
   useEffect(() => {
-    checkSession();
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
+    let recoveryDetected = false;
+    
+    // Listen for Supabase auth events FIRST (before checkSession can redirect)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event);
+      if (event === 'PASSWORD_RECOVERY') {
+        recoveryDetected = true;
+        localStorage.removeItem('momentum_user'); // Prevent auto-login override
+        setCurrentUser(null);
+        setView('auth');
+        setAuthMode('resetPassword');
+        setError('');
+        setSuccessMessage('');
+      }
+    });
+    
+    // Small delay to let onAuthStateChange fire PASSWORD_RECOVERY before checkSession
+    const sessionTimer = setTimeout(() => {
+      if (!recoveryDetected) {
+        checkSession();
+      }
+    }, 300);
+    
+    return () => { clearInterval(timer); clearTimeout(sessionTimer); subscription.unsubscribe(); };
   }, []);
 
   useEffect(() => {
@@ -1692,6 +1716,33 @@ export default function MomentumApp() {
     if (error) { setError(error.message); return; }
     
     setSuccessMessage('✅ Password reset email sent! Check your inbox.');
+  };
+
+  const handleResetPassword = async () => {
+    setError(''); setSuccessMessage('');
+    if (!newPassword || !confirmNewPassword) { setError('Please fill in both fields'); return; }
+    if (newPassword !== confirmNewPassword) { setError('Passwords do not match'); return; }
+    if (newPassword.length < 6) { setError('Password must be at least 6 characters'); return; }
+    
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    
+    if (error) { setError(error.message); return; }
+    
+    setSuccessMessage('✅ Password updated successfully!');
+    setNewPassword('');
+    setConfirmNewPassword('');
+    
+    // Clean up URL hash and params
+    if (window.location.hash || window.location.search) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    
+    // Sign out so they can log in fresh with new password
+    await supabase.auth.signOut();
+    setTimeout(() => {
+      setAuthMode('login');
+      setSuccessMessage('Password updated! Please log in with your new password.');
+    }, 1500);
   };
 
   const generateInvite = async (useCustom = false) => {
@@ -2013,7 +2064,7 @@ export default function MomentumApp() {
             <h1 className="text-4xl font-bold text-white mb-2">Momentum</h1>
             <p className="text-slate-400 text-sm">Track. Compete. Dominate.</p>
           </div>
-          {authMode !== 'verify' && authMode !== 'forgot' && (
+          {authMode !== 'verify' && authMode !== 'forgot' && authMode !== 'resetPassword' && (
             <div className="flex gap-1 mb-6 bg-slate-700 p-1 rounded-lg">
               <button onClick={() => { setAuthMode('login'); setError(''); setSuccessMessage(''); }} className={`flex-1 py-2 rounded-md text-sm font-semibold transition ${authMode === 'login' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>Login</button>
               <button onClick={() => { setAuthMode('owner'); setError(''); setSuccessMessage(''); }} className={`flex-1 py-2 rounded-md text-sm font-semibold transition ${authMode === 'owner' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>New Team</button>
@@ -2064,6 +2115,18 @@ export default function MomentumApp() {
               <input type="email" placeholder="Email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
               <button onClick={handleForgotPassword} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition">Send Reset Link</button>
               <button onClick={() => { setAuthMode('login'); setError(''); setSuccessMessage(''); setForgotEmail(''); }} className="w-full text-slate-400 hover:text-white text-sm transition">← Back to Login</button>
+            </div>
+          )}
+          {authMode === 'resetPassword' && (
+            <div className="space-y-4">
+              <div className="text-center">
+                <div className="text-5xl mb-3">🔐</div>
+                <h2 className="text-xl font-bold text-white">Set New Password</h2>
+                <p className="text-slate-400 text-sm mt-1">Enter your new password below</p>
+              </div>
+              <input type="password" placeholder="New Password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <input type="password" placeholder="Confirm New Password" value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)} className="w-full bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:border-blue-500 focus:outline-none" />
+              <button onClick={handleResetPassword} className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition">Update Password</button>
             </div>
           )}
           <p className="text-slate-600 text-center text-xs mt-6">Powered by AI Coastal Bridge</p>
