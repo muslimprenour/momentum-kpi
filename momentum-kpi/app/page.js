@@ -715,10 +715,9 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
     return deals.filter(d => d.agent_name && d.agent_name.toLowerCase().trim() === name);
   };
 
-  // Get team member name from user_id
-  const getMemberName = (memberId) => {
-    const m = teamMembers.find(t => t.id === memberId);
-    return m ? (m.display_name || m.name || 'Unknown') : '';
+  // Get team member info from user_id
+  const getMember = (memberId) => {
+    return teamMembers.find(t => t.id === memberId);
   };
 
   // Days since last contact
@@ -949,11 +948,39 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h4 className="text-white font-semibold truncate">{agent.agent_name}</h4>
+                    {/* Deal counter pill */}
+                    {(() => {
+                      const agentDeals = getAgentDeals(agent.agent_name);
+                      const count = agentDeals.length;
+                      if (count === 0) return null;
+                      const tier = count >= 10 ? { icon: '👑', color: 'text-yellow-400', bg: 'bg-yellow-500/15', border: 'border-yellow-500/30' } 
+                        : count >= 5 ? { icon: '💎', color: 'text-purple-400', bg: 'bg-purple-500/15', border: 'border-purple-500/30' }
+                        : count >= 3 ? { icon: '🔥', color: 'text-orange-400', bg: 'bg-orange-500/15', border: 'border-orange-500/30' }
+                        : { icon: '🤝', color: 'text-emerald-400', bg: 'bg-emerald-500/15', border: 'border-emerald-500/30' };
+                      return (
+                        <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${tier.bg} ${tier.border} ${tier.color} border`}>
+                          {tier.icon} {count}
+                        </span>
+                      );
+                    })()}
                   </div>
-                  {isOwner && agent.user_id !== userId && (
-                    <p className="text-xs text-blue-400 mt-0.5">👤 {getMemberName(agent.user_id)}</p>
-                  )}
-                  {/* Deal Count & Properties */}
+                  {isOwner && agent.user_id !== userId && (() => {
+                    const member = getMember(agent.user_id);
+                    if (!member) return null;
+                    const name = member.display_name || member.name || 'Unknown';
+                    const avatar = member.avatar_emoji;
+                    return (
+                      <div className="inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-500/20">
+                        {avatar ? (
+                          <span className="text-sm">{avatar}</span>
+                        ) : (
+                          <span className="w-4 h-4 rounded-full bg-blue-500/30 flex items-center justify-center text-[9px] text-blue-300 font-bold">{name.charAt(0)}</span>
+                        )}
+                        <span className="text-xs font-medium bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">{name}</span>
+                      </div>
+                    );
+                  })()}
+                  {/* Property list */}
                   {(() => {
                     const agentDeals = getAgentDeals(agent.agent_name);
                     const count = agentDeals.length;
@@ -961,32 +988,25 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
                       return <p className="text-amber-400 text-xs mt-1 truncate">🏠 {agent.deal_closed}</p>;
                     }
                     if (count === 0) return null;
-                    const milestoneEmoji = count >= 10 ? '👑' : count >= 5 ? '💎' : count >= 3 ? '🔥' : '⚡';
-                    const milestoneBg = count >= 10 ? 'from-yellow-500/30 to-amber-600/20 border-yellow-500/40' : count >= 5 ? 'from-purple-500/30 to-blue-600/20 border-purple-500/40' : count >= 3 ? 'from-orange-500/30 to-red-600/20 border-orange-500/40' : 'from-green-500/30 to-emerald-600/20 border-green-500/40';
-                    const milestoneText = count >= 10 ? 'text-yellow-400' : count >= 5 ? 'text-purple-400' : count >= 3 ? 'text-orange-400' : 'text-green-400';
+                    const totalRev = agentDeals.reduce((s, d) => s + parseFloat(d.revenue || d.commission_amount || 0), 0);
                     return (
-                      <div className={`mt-2 rounded-lg p-2 bg-gradient-to-r ${milestoneBg} border`}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-lg">{milestoneEmoji}</span>
-                          <span className={`font-bold text-sm ${milestoneText}`}>{count} Deal{count > 1 ? 's' : ''} Closed Together!</span>
-                          {count >= 3 && <span className="text-xs animate-pulse">🤝</span>}
-                        </div>
-                        <div className="space-y-0.5">
-                          {agentDeals.slice(0, 5).map((d, i) => (
-                            <div key={i} className="flex items-center gap-1.5 text-xs">
-                              <span className="text-slate-500">•</span>
-                              {d.zillow_url ? (
-                                <a href={d.zillow_url} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300 hover:underline truncate">
-                                  🏠 {d.property_address}
-                                </a>
-                              ) : (
-                                <span className="text-slate-400 truncate">{d.property_address}</span>
-                              )}
-                              <span className="text-slate-600 whitespace-nowrap">${(parseFloat(d.revenue || d.commission_amount || 0) / 1000).toFixed(0)}k</span>
-                            </div>
-                          ))}
-                          {count > 5 && <p className="text-slate-500 text-xs pl-3">+{count - 5} more</p>}
-                        </div>
+                      <div className="mt-1.5">
+                        <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-1">
+                          {count} deal{count > 1 ? 's' : ''} · ${totalRev >= 1000 ? `${(totalRev / 1000).toFixed(0)}k` : totalRev.toFixed(0)} total
+                        </p>
+                        {agentDeals.slice(0, 3).map((d, i) => (
+                          <div key={i} className="flex items-center gap-1 text-xs leading-relaxed">
+                            {d.zillow_url ? (
+                              <a href={d.zillow_url} target="_blank" rel="noopener noreferrer" className="text-amber-400/80 hover:text-amber-300 hover:underline truncate transition-colors">
+                                {d.property_address}
+                              </a>
+                            ) : (
+                              <span className="text-slate-400/70 truncate">{d.property_address}</span>
+                            )}
+                            <span className="text-slate-600 whitespace-nowrap ml-auto text-[10px]">${(parseFloat(d.revenue || d.commission_amount || 0) / 1000).toFixed(0)}k</span>
+                          </div>
+                        ))}
+                        {count > 3 && <p className="text-slate-600 text-[10px] mt-0.5">+{count - 3} more deals</p>}
                       </div>
                     );
                   })()}
@@ -2257,15 +2277,19 @@ export default function MomentumApp() {
                       const days = Math.floor((new Date() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
                       const freq = agent.followup_days || 14;
                       const overdueDays = days - freq;
-                      const memberName = currentUser?.role === 'owner' && agent.user_id !== currentUser?.id 
-                        ? (teamMembers.find(m => m.id === agent.user_id)?.display_name || teamMembers.find(m => m.id === agent.user_id)?.name || '')
-                        : '';
+                      const member = currentUser?.role === 'owner' && agent.user_id !== currentUser?.id 
+                        ? teamMembers.find(m => m.id === agent.user_id) : null;
                       return (
                         <div key={agent.id} className="flex items-center gap-3 bg-slate-800/80 rounded-lg px-3 py-2.5">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="text-white font-semibold text-sm truncate">{agent.agent_name}</span>
-                              {memberName && <span className="text-blue-400 text-xs">({memberName})</span>}
+                              {member && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20">
+                                  {member.avatar_emoji ? <span>{member.avatar_emoji}</span> : <span className="text-blue-300">{(member.display_name || member.name || '?').charAt(0)}</span>}
+                                  <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">{member.display_name || member.name}</span>
+                                </span>
+                              )}
                             </div>
                             <p className="text-red-400 text-xs mt-0.5">
                               {days}d since {agent.last_contact_date ? 'last contact' : 'added'} • {overdueDays}d overdue (every {freq}d)
