@@ -176,6 +176,13 @@ const db = {
     create: (deal) => supabaseFetch('deals_closed', { method: 'POST', body: [deal] }),
     update: (dealId, updates) => supabaseFetch(`deals_closed?id=eq.${dealId}`, { method: 'PATCH', body: updates }),
     delete: (dealId) => supabaseFetch(`deals_closed?id=eq.${dealId}`, { method: 'DELETE' }),
+  },
+  pipeline: {
+    getByOrg: (orgId) => supabaseFetch(`pipeline_deals?organization_id=eq.${orgId}&select=*&order=created_at.desc`),
+    getByUser: (userId) => supabaseFetch(`pipeline_deals?user_id=eq.${userId}&select=*&order=created_at.desc`),
+    create: (deal) => supabaseFetch('pipeline_deals', { method: 'POST', body: [deal] }),
+    update: (dealId, updates) => supabaseFetch(`pipeline_deals?id=eq.${dealId}`, { method: 'PATCH', body: updates }),
+    delete: (dealId) => supabaseFetch(`pipeline_deals?id=eq.${dealId}`, { method: 'DELETE' }),
   }
 };
 
@@ -1276,6 +1283,7 @@ export default function MomentumApp() {
   
   // Deals tracking state
   const [deals, setDeals] = useState([]);
+  const [pipelineDeals, setPipelineDeals] = useState([]);
   const [dealsYear, setDealsYear] = useState(new Date().getFullYear());
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [editingDeal, setEditingDeal] = useState(null);
@@ -1329,6 +1337,17 @@ export default function MomentumApp() {
     purchase_contract: null,
     assignment_contract: null,
     hud: null
+  });
+  const [dealsView, setDealsView] = useState('pipeline'); // 'pipeline' or 'closed'
+  const [pipelineViewMode, setPipelineViewMode] = useState('kanban'); // 'kanban' or 'list'
+  const [showAddPipeline, setShowAddPipeline] = useState(false);
+  const [editingPipeline, setEditingPipeline] = useState(null);
+  const [pipelineForm, setPipelineForm] = useState({
+    property_address: '', zillow_url: '', asking_price: '', deal_source: 'on_market', deal_type: 'wholesale',
+    offer_amount: '', offer_date: '', uc_price: '', uc_date: '', inspection_date: '',
+    est_close_date: '', est_revenue: '', sold_price: '',
+    agent_name: '', agent_email: '', agent_phone: '',
+    stage: 'lead', notes: '', sourced_by_user_id: ''
   });
   
   // Upload file to Supabase Storage via API route (uses service role key server-side)
@@ -1412,6 +1431,7 @@ export default function MomentumApp() {
       loadUserNotes();
       loadVipAgents();
       loadDeals();
+      loadPipeline();
       if (organization.kpi_goals) setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
     }
   }, [currentUser, organization]);
@@ -1454,17 +1474,32 @@ export default function MomentumApp() {
     try {
       let data;
       if (currentUser.role === 'owner') {
-        // Owner sees all deals for the org
         const result = await db.deals.getByOrgAndYear(organization.id, year);
         data = result.data;
       } else {
-        // Team member sees only their deals (as primary or split partner)
         const result = await db.deals.getByUserAndYear(currentUser.id, year);
         data = result.data;
       }
       if (data) setDeals(data);
     } catch (e) {
       console.log('Deals table not ready yet');
+    }
+  };
+
+  const loadPipeline = async () => {
+    if (!currentUser || !organization) return;
+    try {
+      let data;
+      if (currentUser.role === 'owner') {
+        const result = await db.pipeline.getByOrg(organization.id);
+        data = result.data;
+      } else {
+        const result = await db.pipeline.getByUser(currentUser.id);
+        data = result.data;
+      }
+      if (data) setPipelineDeals(data);
+    } catch (e) {
+      console.log('Pipeline table not ready yet');
     }
   };
 
@@ -2753,6 +2788,478 @@ export default function MomentumApp() {
 
         {currentTab === 'deals' && (
           <div className="space-y-4">
+            {/* Pipeline / Closed Toggle */}
+            <div className="flex items-center gap-2">
+              <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
+                <button onClick={() => setDealsView('pipeline')} className={`px-4 py-2 rounded-md text-sm font-semibold transition ${dealsView === 'pipeline' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                  📋 Pipeline
+                </button>
+                <button onClick={() => setDealsView('closed')} className={`px-4 py-2 rounded-md text-sm font-semibold transition ${dealsView === 'closed' ? 'bg-green-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                  ✅ Closed
+                </button>
+              </div>
+              {dealsView === 'pipeline' && (
+                <div className="flex items-center gap-1 ml-auto">
+                  <div className="flex bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+                    <button onClick={() => setPipelineViewMode('kanban')} className={`px-2.5 py-1.5 rounded text-xs font-medium transition ${pipelineViewMode === 'kanban' ? 'bg-slate-600 text-white' : 'text-slate-500'}`}>
+                      Kanban
+                    </button>
+                    <button onClick={() => setPipelineViewMode('list')} className={`px-2.5 py-1.5 rounded text-xs font-medium transition ${pipelineViewMode === 'list' ? 'bg-slate-600 text-white' : 'text-slate-500'}`}>
+                      List
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => { setShowAddPipeline(true); setEditingPipeline(null); setPipelineForm({ property_address: '', zillow_url: '', asking_price: '', deal_source: 'on_market', deal_type: 'wholesale', offer_amount: '', offer_date: '', uc_price: '', uc_date: '', inspection_date: '', est_close_date: '', est_revenue: '', sold_price: '', agent_name: '', agent_email: '', agent_phone: '', stage: 'lead', notes: '', sourced_by_user_id: '' }); }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-sm"
+                  >
+                    + Add Lead
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ======= PIPELINE VIEW ======= */}
+            {dealsView === 'pipeline' && (() => {
+              const STAGES = [
+                { key: 'lead', label: 'Lead', icon: '🎯', color: 'blue' },
+                { key: 'offer_sent', label: 'Offer Sent', icon: '📨', color: 'purple' },
+                { key: 'under_contract', label: 'Under Contract', icon: '📝', color: 'amber' },
+                { key: 'closing', label: 'Closing', icon: '🏁', color: 'green' }
+              ];
+              const colorMap = { blue: 'border-blue-500/40 bg-blue-500/5', purple: 'border-purple-500/40 bg-purple-500/5', amber: 'border-amber-500/40 bg-amber-500/5', green: 'border-green-500/40 bg-green-500/5' };
+              const badgeMap = { blue: 'bg-blue-500/20 text-blue-400', purple: 'bg-purple-500/20 text-purple-400', amber: 'bg-amber-500/20 text-amber-400', green: 'bg-green-500/20 text-green-400' };
+              const dotMap = { blue: 'bg-blue-500', purple: 'bg-purple-500', amber: 'bg-amber-500', green: 'bg-green-500' };
+              
+              const canSeeNet = (deal) => {
+                if (currentUser?.role === 'owner') return true;
+                if (deal.sourced_by_user_id === currentUser?.id) return true;
+                if (deal.user_id === currentUser?.id) return true;
+                return false;
+              };
+              
+              const moveStage = async (deal, newStage) => {
+                if (newStage === 'closed') {
+                  // Auto-open deal form pre-filled from pipeline
+                  setDealForm({
+                    property_address: deal.property_address || '',
+                    uc_price: deal.uc_price || deal.offer_amount || '',
+                    sold_price: deal.sold_price || '',
+                    split_with_user_id: deal.sourced_by_user_id || '',
+                    split_percentage: '50', split_type: 'percentage', split_amount: '',
+                    closed_date: getTodayInOrgTimezone(),
+                    notes: deal.notes || '',
+                    deal_source: deal.deal_source || 'on_market',
+                    original_list_price: deal.asking_price || '',
+                    had_price_reduction: false, original_uc_price: '',
+                    deal_type: deal.deal_type || 'wholesale',
+                    sale_price: '', commission_amount: '',
+                    list_back_secured: false, list_back_commission_pct: '',
+                    purchase_contract_url: '', assignment_contract_url: '', hud_url: '',
+                    dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '',
+                    dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '',
+                    realtor_commission_paid: false, realtor_commission_type: 'percentage',
+                    realtor_commission_percentage: '', realtor_commission_amount: '',
+                    attorney_used: false, attorney_fee: '', attorney_fee_split: false,
+                    agent_name: deal.agent_name || '', agent_email: deal.agent_email || '', agent_phone: deal.agent_phone || '',
+                    zillow_url: deal.zillow_url || '', misc_fees: []
+                  });
+                  setEditingDeal(null);
+                  setShowAddDeal(true);
+                  // Delete from pipeline after opening form
+                  await db.pipeline.delete(deal.id);
+                  setPipelineDeals(prev => prev.filter(d => d.id !== deal.id));
+                  return;
+                }
+                await db.pipeline.update(deal.id, { stage: newStage, updated_at: new Date().toISOString() });
+                setPipelineDeals(prev => prev.map(d => d.id === deal.id ? { ...d, stage: newStage } : d));
+              };
+              
+              const editPipeline = (deal) => {
+                setPipelineForm({
+                  property_address: deal.property_address || '', zillow_url: deal.zillow_url || '',
+                  asking_price: deal.asking_price || '', deal_source: deal.deal_source || 'on_market',
+                  deal_type: deal.deal_type || 'wholesale',
+                  offer_amount: deal.offer_amount || '', offer_date: deal.offer_date || '',
+                  uc_price: deal.uc_price || '', uc_date: deal.uc_date || '', inspection_date: deal.inspection_date || '',
+                  est_close_date: deal.est_close_date || '', est_revenue: deal.est_revenue || '', sold_price: deal.sold_price || '',
+                  agent_name: deal.agent_name || '', agent_email: deal.agent_email || '', agent_phone: deal.agent_phone || '',
+                  stage: deal.stage || 'lead', notes: deal.notes || '',
+                  sourced_by_user_id: deal.sourced_by_user_id || ''
+                });
+                setEditingPipeline(deal);
+                setShowAddPipeline(true);
+              };
+              
+              const deletePipeline = async (deal) => {
+                if (!confirm('Remove this deal from pipeline?')) return;
+                await db.pipeline.delete(deal.id);
+                setPipelineDeals(prev => prev.filter(d => d.id !== deal.id));
+              };
+
+              const savePipeline = async () => {
+                if (!pipelineForm.property_address.trim()) { alert('Property address required'); return; }
+                const data = {
+                  organization_id: organization.id,
+                  user_id: editingPipeline?.user_id || currentUser.id,
+                  sourced_by_user_id: pipelineForm.sourced_by_user_id || currentUser.id,
+                  property_address: pipelineForm.property_address,
+                  zillow_url: pipelineForm.zillow_url || null,
+                  asking_price: pipelineForm.asking_price ? parseFloat(pipelineForm.asking_price) : null,
+                  deal_source: pipelineForm.deal_source,
+                  deal_type: pipelineForm.deal_type,
+                  offer_amount: pipelineForm.offer_amount ? parseFloat(pipelineForm.offer_amount) : null,
+                  offer_date: pipelineForm.offer_date || null,
+                  uc_price: pipelineForm.uc_price ? parseFloat(pipelineForm.uc_price) : null,
+                  uc_date: pipelineForm.uc_date || null,
+                  inspection_date: pipelineForm.inspection_date || null,
+                  est_close_date: pipelineForm.est_close_date || null,
+                  est_revenue: pipelineForm.est_revenue ? parseFloat(pipelineForm.est_revenue) : null,
+                  sold_price: pipelineForm.sold_price ? parseFloat(pipelineForm.sold_price) : null,
+                  agent_name: pipelineForm.agent_name || null,
+                  agent_email: pipelineForm.agent_email || null,
+                  agent_phone: pipelineForm.agent_phone || null,
+                  stage: pipelineForm.stage,
+                  notes: pipelineForm.notes || null,
+                  updated_at: new Date().toISOString()
+                };
+                try {
+                  if (editingPipeline) {
+                    await db.pipeline.update(editingPipeline.id, data);
+                    setPipelineDeals(prev => prev.map(d => d.id === editingPipeline.id ? { ...d, ...data } : d));
+                  } else {
+                    data.created_at = new Date().toISOString();
+                    const { data: result } = await db.pipeline.create(data);
+                    if (result?.[0]) setPipelineDeals(prev => [result[0], ...prev]);
+                  }
+                  setShowAddPipeline(false);
+                  setEditingPipeline(null);
+                } catch (e) {
+                  alert('Error saving pipeline deal. Run the SQL migration first!');
+                }
+              };
+
+              // Pipeline card component
+              const PipelineCard = ({ deal, stageInfo }) => {
+                const stageIdx = STAGES.findIndex(s => s.key === deal.stage);
+                const nextStage = stageIdx < STAGES.length - 1 ? STAGES[stageIdx + 1] : null;
+                const member = teamMembers.find(m => m.id === (deal.sourced_by_user_id || deal.user_id));
+                const memberName = member?.display_name || member?.name || '';
+                const daysInStage = Math.floor((new Date() - new Date(deal.updated_at || deal.created_at)) / 86400000);
+                const estRev = parseFloat(deal.est_revenue || 0) || (parseFloat(deal.sold_price || 0) - parseFloat(deal.uc_price || deal.offer_amount || 0)) || 0;
+                
+                return (
+                  <div className="bg-slate-800 rounded-lg p-3 border border-slate-700/50 hover:border-slate-600 transition group">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-semibold text-sm truncate">{deal.property_address}</p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${deal.deal_source === 'off_market' ? 'bg-orange-500/20 text-orange-400' : 'bg-slate-600/50 text-slate-400'}`}>
+                            {deal.deal_source === 'off_market' ? '🔥 Off-Market' : '📋 On-Market'}
+                          </span>
+                          {deal.asking_price && <span className="text-slate-500 text-[10px]">Ask: ${(parseFloat(deal.asking_price)/1000).toFixed(0)}k</span>}
+                          {deal.offer_amount && <span className="text-purple-400 text-[10px]">Offer: ${(parseFloat(deal.offer_amount)/1000).toFixed(0)}k</span>}
+                          {deal.uc_price && <span className="text-amber-400 text-[10px]">UC: ${(parseFloat(deal.uc_price)/1000).toFixed(0)}k</span>}
+                        </div>
+                        {canSeeNet(deal) && estRev > 0 && (
+                          <p className="text-green-400 text-xs font-semibold mt-1">Est. ${estRev >= 1000 ? `${(estRev/1000).toFixed(0)}k` : estRev.toFixed(0)}</p>
+                        )}
+                        {memberName && currentUser?.role === 'owner' && (
+                          <div className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20">
+                            {member?.avatar_emoji && <span className="text-[10px]">{member.avatar_emoji}</span>}
+                            <span className="text-[10px] bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent font-medium">{memberName}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-slate-600 text-[10px]">{daysInStage}d</span>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                          <button onClick={() => editPipeline(deal)} className="text-slate-500 hover:text-white text-xs p-1">✏️</button>
+                          <button onClick={() => deletePipeline(deal)} className="text-slate-500 hover:text-red-400 text-xs p-1">🗑️</button>
+                        </div>
+                      </div>
+                    </div>
+                    {deal.agent_name && <p className="text-slate-500 text-[10px] mt-1">🤝 {deal.agent_name}</p>}
+                    {deal.notes && <p className="text-slate-600 text-[10px] mt-1 truncate">📝 {deal.notes}</p>}
+                    {/* Stage actions */}
+                    <div className="flex gap-1 mt-2 pt-2 border-t border-slate-700/50">
+                      {nextStage && (
+                        <button onClick={() => moveStage(deal, nextStage.key)} className={`flex-1 text-[10px] font-semibold py-1.5 rounded ${badgeMap[nextStage.color]} hover:opacity-80 transition`}>
+                          → {nextStage.label}
+                        </button>
+                      )}
+                      {deal.stage === 'closing' && (
+                        <button onClick={() => moveStage(deal, 'closed')} className="flex-1 text-[10px] font-semibold py-1.5 rounded bg-green-500/20 text-green-400 hover:opacity-80 transition">
+                          ✅ Mark Closed
+                        </button>
+                      )}
+                      {stageIdx > 0 && (
+                        <button onClick={() => moveStage(deal, STAGES[stageIdx - 1].key)} className="text-[10px] py-1.5 px-2 rounded bg-slate-700/50 text-slate-500 hover:text-white transition">
+                          ← Back
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+                <>
+                  {/* Pipeline Add/Edit Modal */}
+                  {showAddPipeline && (
+                    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                      <div className="bg-slate-800 rounded-2xl w-full max-w-md border border-slate-700 max-h-[90vh] flex flex-col">
+                        <div className="flex justify-between items-center p-5 pb-3 border-b border-slate-700">
+                          <h3 className="text-lg font-bold text-white">{editingPipeline ? 'Edit Pipeline Deal' : 'Add New Lead'}</h3>
+                          <button onClick={() => { setShowAddPipeline(false); setEditingPipeline(null); }} className="text-slate-400 hover:text-white text-2xl">×</button>
+                        </div>
+                        <div className="p-5 pt-3 overflow-y-auto flex-1 space-y-3">
+                          {/* Stage */}
+                          <div>
+                            <label className="text-slate-400 text-xs">Stage</label>
+                            <select value={pipelineForm.stage} onChange={e => setPipelineForm(f => ({ ...f, stage: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm">
+                              {STAGES.map(s => <option key={s.key} value={s.key}>{s.icon} {s.label}</option>)}
+                            </select>
+                          </div>
+                          {/* Address */}
+                          <div>
+                            <label className="text-slate-400 text-xs">Property Address *</label>
+                            <input type="text" value={pipelineForm.property_address} onChange={e => setPipelineForm(f => ({ ...f, property_address: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="123 Main St, City, NJ" />
+                          </div>
+                          <div>
+                            <label className="text-slate-400 text-xs">Zillow Link</label>
+                            <input type="url" value={pipelineForm.zillow_url} onChange={e => setPipelineForm(f => ({ ...f, zillow_url: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="https://zillow.com/..." />
+                          </div>
+                          {/* Source & Type */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-slate-400 text-xs">Source</label>
+                              <select value={pipelineForm.deal_source} onChange={e => setPipelineForm(f => ({ ...f, deal_source: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm">
+                                <option value="on_market">On-Market</option>
+                                <option value="off_market">Off-Market</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-slate-400 text-xs">Type</label>
+                              <select value={pipelineForm.deal_type} onChange={e => setPipelineForm(f => ({ ...f, deal_type: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm">
+                                <option value="wholesale">Wholesale</option>
+                                <option value="traditional">Traditional</option>
+                              </select>
+                            </div>
+                          </div>
+                          {/* Prices */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-slate-400 text-xs">Asking Price ($)</label>
+                              <input type="number" value={pipelineForm.asking_price} onChange={e => setPipelineForm(f => ({ ...f, asking_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                            </div>
+                            <div>
+                              <label className="text-slate-400 text-xs">Offer Amount ($)</label>
+                              <input type="number" value={pipelineForm.offer_amount} onChange={e => setPipelineForm(f => ({ ...f, offer_amount: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                            </div>
+                          </div>
+                          {pipelineForm.offer_amount && (
+                            <div>
+                              <label className="text-slate-400 text-xs">Offer Date</label>
+                              <input type="date" value={pipelineForm.offer_date} onChange={e => setPipelineForm(f => ({ ...f, offer_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                            </div>
+                          )}
+                          {/* UC fields */}
+                          {(pipelineForm.stage === 'under_contract' || pipelineForm.stage === 'closing') && (
+                            <>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="text-slate-400 text-xs">UC Price ($)</label>
+                                  <input type="number" value={pipelineForm.uc_price} onChange={e => setPipelineForm(f => ({ ...f, uc_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                                </div>
+                                <div>
+                                  <label className="text-slate-400 text-xs">UC Date</label>
+                                  <input type="date" value={pipelineForm.uc_date} onChange={e => setPipelineForm(f => ({ ...f, uc_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="text-slate-400 text-xs">Inspection Date</label>
+                                  <input type="date" value={pipelineForm.inspection_date} onChange={e => setPipelineForm(f => ({ ...f, inspection_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                                </div>
+                                <div>
+                                  <label className="text-slate-400 text-xs">Sold/Assignment Price ($)</label>
+                                  <input type="number" value={pipelineForm.sold_price} onChange={e => setPipelineForm(f => ({ ...f, sold_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                                </div>
+                              </div>
+                            </>
+                          )}
+                          {/* Closing fields */}
+                          {pipelineForm.stage === 'closing' && (
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-slate-400 text-xs">Est. Close Date</label>
+                                <input type="date" value={pipelineForm.est_close_date} onChange={e => setPipelineForm(f => ({ ...f, est_close_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                              </div>
+                              <div>
+                                <label className="text-slate-400 text-xs">Est. Revenue ($)</label>
+                                <input type="number" value={pipelineForm.est_revenue} onChange={e => setPipelineForm(f => ({ ...f, est_revenue: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                              </div>
+                            </div>
+                          )}
+                          {/* Agent */}
+                          <div>
+                            <label className="text-slate-400 text-xs">Agent Name</label>
+                            <input type="text" value={pipelineForm.agent_name} onChange={e => setPipelineForm(f => ({ ...f, agent_name: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Agent name" />
+                          </div>
+                          {pipelineForm.agent_name && (
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-slate-400 text-xs">Agent Email</label>
+                                <input type="email" value={pipelineForm.agent_email} onChange={e => setPipelineForm(f => ({ ...f, agent_email: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                              </div>
+                              <div>
+                                <label className="text-slate-400 text-xs">Agent Phone</label>
+                                <input type="tel" value={pipelineForm.agent_phone} onChange={e => setPipelineForm(f => ({ ...f, agent_phone: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                              </div>
+                            </div>
+                          )}
+                          {/* Sourced by */}
+                          {currentUser?.role === 'owner' && teamMembers.length > 1 && (
+                            <div>
+                              <label className="text-slate-400 text-xs">Sourced By</label>
+                              <select value={pipelineForm.sourced_by_user_id} onChange={e => setPipelineForm(f => ({ ...f, sourced_by_user_id: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm">
+                                <option value="">Select team member...</option>
+                                {teamMembers.map(m => <option key={m.id} value={m.id}>{m.display_name || m.name}</option>)}
+                              </select>
+                            </div>
+                          )}
+                          {/* Notes */}
+                          <div>
+                            <label className="text-slate-400 text-xs">Notes</label>
+                            <textarea value={pipelineForm.notes} onChange={e => setPipelineForm(f => ({ ...f, notes: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" rows={2} placeholder="Any notes about this deal..." />
+                          </div>
+                          {/* Commission Preview */}
+                          {(() => {
+                            const uc = parseFloat(pipelineForm.uc_price || pipelineForm.offer_amount || 0);
+                            const sold = parseFloat(pipelineForm.sold_price || 0);
+                            const estRev = parseFloat(pipelineForm.est_revenue || 0);
+                            const spread = sold && uc ? sold - uc : estRev;
+                            if (!spread || spread <= 0) return null;
+                            return (
+                              <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+                                <p className="text-green-400 text-xs font-semibold mb-1">💰 Est. Spread Preview</p>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Gross Spread</span>
+                                  <span className="text-green-400 font-bold">${spread.toLocaleString()}</span>
+                                </div>
+                                {uc > 0 && sold > 0 && (
+                                  <div className="flex justify-between text-xs mt-1">
+                                    <span className="text-slate-500">UC ${uc.toLocaleString()} → Sold ${sold.toLocaleString()}</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                        <div className="flex gap-3 p-5 pt-3 border-t border-slate-700">
+                          <button onClick={() => { setShowAddPipeline(false); setEditingPipeline(null); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+                          <button onClick={savePipeline} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-semibold">{editingPipeline ? 'Update' : 'Save Lead'}</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary Stats */}
+                  <div className="grid grid-cols-4 gap-2">
+                    {STAGES.map(s => {
+                      const stageDeals = pipelineDeals.filter(d => d.stage === s.key);
+                      const totalEst = stageDeals.reduce((sum, d) => sum + (parseFloat(d.est_revenue || 0) || (parseFloat(d.sold_price || 0) - parseFloat(d.uc_price || d.offer_amount || 0)) || 0), 0);
+                      return (
+                        <div key={s.key} className={`rounded-lg p-3 border ${colorMap[s.color]}`}>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-sm">{s.icon}</span>
+                            <span className="text-white font-bold text-lg">{stageDeals.length}</span>
+                          </div>
+                          <p className="text-slate-400 text-[10px] uppercase tracking-wider">{s.label}</p>
+                          {currentUser?.role === 'owner' && totalEst > 0 && (
+                            <p className="text-green-400/60 text-[10px] mt-0.5">${(totalEst/1000).toFixed(0)}k est.</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* KANBAN VIEW */}
+                  {pipelineViewMode === 'kanban' && (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      {STAGES.map(s => {
+                        const stageDeals = pipelineDeals.filter(d => d.stage === s.key);
+                        return (
+                          <div key={s.key} className="space-y-2">
+                            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${colorMap[s.color]}`}>
+                              <div className={`w-2 h-2 rounded-full ${dotMap[s.color]}`} />
+                              <span className="text-white text-sm font-semibold">{s.label}</span>
+                              <span className={`text-xs px-1.5 py-0.5 rounded-full ${badgeMap[s.color]} font-bold ml-auto`}>{stageDeals.length}</span>
+                            </div>
+                            {stageDeals.length === 0 ? (
+                              <div className="border border-dashed border-slate-700 rounded-lg p-4 text-center">
+                                <p className="text-slate-600 text-xs">No deals</p>
+                              </div>
+                            ) : (
+                              stageDeals.map(deal => <PipelineCard key={deal.id} deal={deal} stageInfo={s} />)
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* LIST VIEW */}
+                  {pipelineViewMode === 'list' && (
+                    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                      {pipelineDeals.length === 0 ? (
+                        <div className="p-8 text-center">
+                          <span className="text-3xl block mb-2">🎯</span>
+                          <p className="text-slate-500 text-sm">No deals in pipeline yet</p>
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-slate-700/50">
+                          {pipelineDeals.map(deal => {
+                            const stageInfo = STAGES.find(s => s.key === deal.stage) || STAGES[0];
+                            const estRev = parseFloat(deal.est_revenue || 0) || (parseFloat(deal.sold_price || 0) - parseFloat(deal.uc_price || deal.offer_amount || 0)) || 0;
+                            const member = teamMembers.find(m => m.id === (deal.sourced_by_user_id || deal.user_id));
+                            const stageIdx = STAGES.findIndex(s => s.key === deal.stage);
+                            const nextStage = stageIdx < STAGES.length - 1 ? STAGES[stageIdx + 1] : null;
+                            return (
+                              <div key={deal.id} className="p-3 flex items-center gap-3 hover:bg-slate-700/30 transition group">
+                                <span className={`text-[10px] px-2 py-1 rounded-full font-semibold whitespace-nowrap ${badgeMap[stageInfo.color]}`}>
+                                  {stageInfo.icon} {stageInfo.label}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-white text-sm font-medium truncate">{deal.property_address}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    {deal.agent_name && <span className="text-slate-500 text-[10px]">🤝 {deal.agent_name}</span>}
+                                    {currentUser?.role === 'owner' && member && <span className="text-blue-400 text-[10px]">{member.avatar_emoji || '👤'} {member.display_name || member.name}</span>}
+                                  </div>
+                                </div>
+                                {canSeeNet(deal) && estRev > 0 && (
+                                  <span className="text-green-400 text-xs font-semibold whitespace-nowrap">${estRev >= 1000 ? `${(estRev/1000).toFixed(0)}k` : estRev.toFixed(0)}</span>
+                                )}
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                  {nextStage && <button onClick={() => moveStage(deal, nextStage.key)} className={`text-[10px] px-2 py-1 rounded ${badgeMap[nextStage.color]}`}>→ {nextStage.label}</button>}
+                                  {deal.stage === 'closing' && <button onClick={() => moveStage(deal, 'closed')} className="text-[10px] px-2 py-1 rounded bg-green-500/20 text-green-400">✅ Close</button>}
+                                  <button onClick={() => editPipeline(deal)} className="text-slate-500 hover:text-white text-xs p-1">✏️</button>
+                                  <button onClick={() => deletePipeline(deal)} className="text-slate-500 hover:text-red-400 text-xs p-1">🗑️</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+
+            {/* ======= CLOSED DEALS VIEW ======= */}
+            {dealsView === 'closed' && (
+            <>
             {/* Year selector and Add button */}
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
@@ -4043,6 +4550,72 @@ export default function MomentumApp() {
                         )}
                       </>
                     )}
+                    
+                    {/* 💰 Live Commission Calculator */}
+                    {(() => {
+                      const isW = dealForm.deal_type === 'wholesale';
+                      const ucP = parseFloat(dealForm.uc_price || 0);
+                      const soldP = parseFloat(dealForm.sold_price || 0);
+                      const commAmt = parseFloat(dealForm.commission_amount || 0);
+                      const gross = isW ? (soldP - ucP) : commAmt;
+                      if (!gross || gross <= 0) return null;
+                      
+                      let realtorComm = 0;
+                      if (isW && dealForm.realtor_commission_paid) {
+                        realtorComm = dealForm.realtor_commission_type === 'fixed' 
+                          ? parseFloat(dealForm.realtor_commission_amount || 0)
+                          : ucP * parseFloat(dealForm.realtor_commission_percentage || 0) / 100;
+                      }
+                      const afterComm = gross - realtorComm;
+                      
+                      const miscTotal = (dealForm.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
+                      const afterMisc = afterComm - miscTotal;
+                      
+                      const attFee = (isW && dealForm.attorney_used) ? parseFloat(dealForm.attorney_fee || 0) : 0;
+                      const dispoBase = dealForm.attorney_fee_split ? (afterMisc - attFee) : afterMisc;
+                      
+                      let dispoShare = 0;
+                      if (isW && dealForm.dispo_help) {
+                        dispoShare = dealForm.dispo_share_type === 'fixed'
+                          ? parseFloat(dealForm.dispo_share_amount || 0)
+                          : dispoBase * parseFloat(dealForm.dispo_share_percentage || 0) / 100;
+                      }
+                      
+                      const netBeforeSplit = afterMisc - attFee - dispoShare;
+                      
+                      let partnerShare = 0;
+                      if (isW && dealForm.split_with_user_id) {
+                        partnerShare = dealForm.split_type === 'fixed'
+                          ? parseFloat(dealForm.split_amount || 0)
+                          : netBeforeSplit * (100 - parseFloat(dealForm.split_percentage || 50)) / 100;
+                      }
+                      
+                      const companyNet = gross - realtorComm - miscTotal - attFee - dispoShare - partnerShare;
+                      const showSensitive = currentUser?.role === 'owner' || dealForm.split_with_user_id === currentUser?.id;
+                      
+                      if (!showSensitive) return null;
+                      
+                      return (
+                        <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/5 border border-green-500/20 rounded-xl p-4 mt-2">
+                          <p className="text-green-400 font-semibold text-sm mb-2">💰 Deal Breakdown Preview</p>
+                          <div className="space-y-1.5 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Gross {isW ? 'Spread' : 'Commission'}</span>
+                              <span className="text-white font-semibold">${gross.toLocaleString()}</span>
+                            </div>
+                            {realtorComm > 0 && <div className="flex justify-between"><span className="text-slate-500 text-xs">− Agent Commission</span><span className="text-red-400 text-xs">-${realtorComm.toLocaleString()}</span></div>}
+                            {miscTotal > 0 && <div className="flex justify-between"><span className="text-slate-500 text-xs">− Misc Fees</span><span className="text-red-400 text-xs">-${miscTotal.toLocaleString()}</span></div>}
+                            {attFee > 0 && <div className="flex justify-between"><span className="text-slate-500 text-xs">− Attorney Fee</span><span className="text-red-400 text-xs">-${attFee.toLocaleString()}</span></div>}
+                            {dispoShare > 0 && <div className="flex justify-between"><span className="text-slate-500 text-xs">− Dispo Partner</span><span className="text-red-400 text-xs">-${dispoShare.toLocaleString()}</span></div>}
+                            {partnerShare > 0 && <div className="flex justify-between"><span className="text-slate-500 text-xs">− Team Split</span><span className="text-red-400 text-xs">-${partnerShare.toLocaleString()}</span></div>}
+                            <div className="flex justify-between pt-1.5 border-t border-green-500/20">
+                              <span className="text-green-400 font-semibold">Company Net</span>
+                              <span className="text-green-400 font-bold text-base">${companyNet.toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="flex gap-3 p-6 pt-4 border-t border-slate-700">
                     <button 
@@ -4301,6 +4874,8 @@ export default function MomentumApp() {
                   </div>
                 </div>
               </div>
+            )}
+            </>
             )}
           </div>
         )}
