@@ -183,6 +183,20 @@ const db = {
     create: (deal) => supabaseFetch('pipeline_deals', { method: 'POST', body: [deal] }),
     update: (dealId, updates) => supabaseFetch(`pipeline_deals?id=eq.${dealId}`, { method: 'PATCH', body: updates }),
     delete: (dealId) => supabaseFetch(`pipeline_deals?id=eq.${dealId}`, { method: 'DELETE' }),
+  },
+  activity: {
+    getByOrg: (orgId, limit = 50) => supabaseFetch(`activity_feed?organization_id=eq.${orgId}&select=*&order=created_at.desc&limit=${limit}`),
+    create: (entry) => supabaseFetch('activity_feed', { method: 'POST', body: [entry] }),
+  },
+  personalGoals: {
+    getByUser: (userId) => supabaseFetch(`personal_goals?user_id=eq.${userId}&select=*&order=created_at.desc`),
+    create: (goal) => supabaseFetch('personal_goals', { method: 'POST', body: [goal] }),
+    update: (goalId, updates) => supabaseFetch(`personal_goals?id=eq.${goalId}`, { method: 'PATCH', body: updates }),
+    delete: (goalId) => supabaseFetch(`personal_goals?id=eq.${goalId}`, { method: 'DELETE' }),
+  },
+  monthlyGoals: {
+    getByUser: (userId, year) => supabaseFetch(`monthly_goals?user_id=eq.${userId}&year=eq.${year}&select=*`),
+    upsert: (goal) => supabaseFetch('monthly_goals?on_conflict=user_id,year,month', { method: 'POST', body: [goal], prefer: 'return=representation,resolution=merge-duplicates' }),
   }
 };
 
@@ -794,6 +808,8 @@ const VIPAgentsSection = ({ userId, vipAgents, setVipAgents, deals = [], teamMem
         const { data } = await db.vipAgents.create(newAgent);
         if (data?.[0]) {
           setVipAgents(prev => [data[0], ...prev]);
+          const name = currentUser.display_name || currentUser.name;
+          logActivity('vip_added', `${name} added VIP agent: ${newAgent.agent_name}`, { agent_name: newAgent.agent_name });
         }
       }
       resetForm();
@@ -1349,6 +1365,17 @@ export default function MomentumApp() {
     agent_name: '', agent_email: '', agent_phone: '',
     stage: 'lead', notes: '', sourced_by_user_id: ''
   });
+
+  // Activity Feed & Goals state
+  const [activityFeed, setActivityFeed] = useState([]);
+  const [personalGoals, setPersonalGoals] = useState([]);
+  const [showTaxSetup, setShowTaxSetup] = useState(false);
+  const [showAddGoal, setShowAddGoal] = useState(false);
+  const [editingGoal, setEditingGoal] = useState(null);
+  const [goalForm, setGoalForm] = useState({ name: '', target_amount: '', current_amount: '', category: 'savings', icon: '🎯' });
+  const [taxForm, setTaxForm] = useState({ filing_status: 'single', estimated_annual: '', has_other_income: false, other_income: '', deductions: 'standard' });
+  const [monthlyGoals, setMonthlyGoals] = useState([]);
+  const [goalsYear, setGoalsYear] = useState(new Date().getFullYear());
   
   // Upload file to Supabase Storage via API route (uses service role key server-side)
   const uploadDealDocument = async (file, dealId, docType) => {
@@ -1432,6 +1459,8 @@ export default function MomentumApp() {
       loadVipAgents();
       loadDeals();
       loadPipeline();
+      loadActivityFeed();
+      loadPersonalGoals();
       if (organization.kpi_goals) setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
     }
   }, [currentUser, organization]);
@@ -1501,6 +1530,61 @@ export default function MomentumApp() {
     } catch (e) {
       console.log('Pipeline table not ready yet');
     }
+  };
+
+  const loadActivityFeed = async () => {
+    if (!organization) return;
+    try {
+      const { data } = await db.activity.getByOrg(organization.id, 30);
+      if (data) setActivityFeed(data);
+    } catch (e) { console.log('Activity feed not ready yet'); }
+  };
+
+  const loadPersonalGoals = async () => {
+    if (!currentUser) return;
+    try {
+      const { data } = await db.personalGoals.getByUser(currentUser.id);
+      if (data) setPersonalGoals(data);
+    } catch (e) { console.log('Personal goals table not ready yet'); }
+  };
+
+  const logActivity = async (type, description, metadata = {}) => {
+    if (!currentUser || !organization) return;
+    try {
+      await db.activity.create({
+        organization_id: organization.id,
+        user_id: currentUser.id,
+        activity_type: type,
+        description,
+        metadata,
+        created_at: new Date().toISOString()
+      });
+    } catch (e) { console.log('Activity log failed:', e); }
+  };
+
+  // Tax estimation helper (NJ + Federal for 1099)
+  const estimateTaxRate = (annualIncome, filingStatus = 'single') => {
+    // 2024 Federal brackets (simplified for 1099)
+    let fedRate = 0;
+    if (annualIncome <= 11600) fedRate = 0.10;
+    else if (annualIncome <= 47150) fedRate = 0.12;
+    else if (annualIncome <= 100525) fedRate = 0.22;
+    else if (annualIncome <= 191950) fedRate = 0.24;
+    else if (annualIncome <= 243725) fedRate = 0.32;
+    else if (annualIncome <= 609350) fedRate = 0.35;
+    else fedRate = 0.37;
+    // NJ state brackets (simplified)
+    let njRate = 0;
+    if (annualIncome <= 20000) njRate = 0.014;
+    else if (annualIncome <= 35000) njRate = 0.0175;
+    else if (annualIncome <= 40000) njRate = 0.035;
+    else if (annualIncome <= 75000) njRate = 0.05525;
+    else if (annualIncome <= 500000) njRate = 0.0637;
+    else if (annualIncome <= 1000000) njRate = 0.0897;
+    else njRate = 0.1075;
+    // Self-employment tax (15.3% on 92.35% of net)
+    const seTax = 0.153 * 0.9235;
+    return { federal: fedRate, state: njRate, selfEmployment: seTax, total: fedRate + njRate + seTax };
   };
 
   const checkSession = async () => {
@@ -1898,6 +1982,7 @@ export default function MomentumApp() {
     const current = getMyKPI();
     const newValue = typeof value === 'string' ? value : Math.max(0, value);
     const updated = { ...current, [field]: newValue, user_id: currentUser.id, date: today };
+    const oldValue = current[field] || 0;
     
     // Check if this update causes them to hit their offer goal for the first time today
     if (field === 'offers') {
@@ -1906,6 +1991,23 @@ export default function MomentumApp() {
       if (wasUnderGoal && nowAtGoal) {
         setShowConfetti(true);
         setTimeout(() => setShowConfetti(false), 3500);
+      }
+    }
+    
+    // Activity logging for KPI milestones (only on increases)
+    if (typeof newValue === 'number' && newValue > oldValue) {
+      const name = currentUser.display_name || currentUser.name;
+      const fieldLabels = { offers: 'offers', off_market_offers: 'off-market offers', phone_calls: 'calls', follow_ups: 'texts', deals_under_contract: 'UC deals', deals_closed: 'closed deals' };
+      const label = fieldLabels[field];
+      if (label) {
+        // Log at milestones: 5, 10, 15, 20, 25... or when hitting daily goal
+        const hitGoal = field === 'offers' && newValue >= goals.daily_offers && oldValue < goals.daily_offers;
+        const hitMilestone = newValue % 5 === 0 && newValue > 0;
+        if (hitGoal) {
+          logActivity('kpi', `${name} hit their daily offer goal! 🎯 (${newValue} ${label})`, { field, value: newValue });
+        } else if (hitMilestone) {
+          logActivity('kpi', `${name} logged ${newValue} ${label} today`, { field, value: newValue });
+        }
       }
     }
     
@@ -2277,31 +2379,34 @@ export default function MomentumApp() {
               { id: 'team', icon: '🏆', label: 'Team' },
               { id: 'analytics', icon: '📊', label: 'Stats' },
               { id: 'deals', icon: '💰', label: 'Deals' },
-              { id: 'notes', icon: '📝', label: 'Notes' },
+              { id: 'goals', icon: '🎯', label: 'Goals' },
               { id: 'more', icon: '•••', label: 'More' }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => {
                   if (tab.id === 'more') {
-                    // Toggle between history and admin
-                    if (currentTab === 'history' || currentTab === 'admin') {
-                      setCurrentTab('personal');
+                    // Cycle through: notes → history → admin → vip
+                    const moreTabs = ['notes', 'history', ...(currentUser?.role === 'owner' ? ['admin'] : []), 'vip'];
+                    const curIdx = moreTabs.indexOf(currentTab);
+                    if (curIdx >= 0) {
+                      const nextIdx = (curIdx + 1) % moreTabs.length;
+                      setCurrentTab(moreTabs[nextIdx]);
                     } else {
-                      setCurrentTab('history');
+                      setCurrentTab('notes');
                     }
                   } else {
                     setCurrentTab(tab.id);
                   }
                 }}
                 className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
-                  (tab.id === currentTab || (tab.id === 'more' && (currentTab === 'history' || currentTab === 'admin')))
+                  (tab.id === currentTab || (tab.id === 'more' && ['history', 'admin', 'notes', 'vip'].includes(currentTab)))
                     ? 'text-blue-400'
                     : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
-                <span className="text-xl">{tab.icon}</span>
-                <span className="text-[10px] font-medium mt-0.5">{tab.label}</span>
+                <span className="text-xl">{tab.id === 'more' && ['notes','history','admin','vip'].includes(currentTab) ? {notes:'📝',history:'📜',admin:'⚙️',vip:'⭐'}[currentTab] || tab.icon : tab.icon}</span>
+                <span className="text-[10px] font-medium mt-0.5">{tab.id === 'more' && ['notes','history','admin','vip'].includes(currentTab) ? {notes:'Notes',history:'History',admin:'Admin',vip:'VIP'}[currentTab] : tab.label}</span>
               </button>
             ))}
           </div>
@@ -2411,6 +2516,39 @@ export default function MomentumApp() {
                 </div>
               );
             })()}
+
+            {/* Activity Feed Widget */}
+            {activityFeed.length > 0 && (
+              <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700">
+                <h3 className="text-white font-bold mb-3 flex items-center gap-2">
+                  <span>⚡</span> Team Activity
+                </h3>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {activityFeed.slice(0, 15).map((a, i) => {
+                    const member = teamMembers.find(m => m.id === a.user_id);
+                    const timeAgo = (() => {
+                      const mins = Math.floor((new Date() - new Date(a.created_at)) / 60000);
+                      if (mins < 1) return 'just now';
+                      if (mins < 60) return `${mins}m ago`;
+                      const hrs = Math.floor(mins / 60);
+                      if (hrs < 24) return `${hrs}h ago`;
+                      const days = Math.floor(hrs / 24);
+                      return `${days}d ago`;
+                    })();
+                    const iconMap = { kpi: '📊', deal_closed: '🎉', pipeline_move: '📋', vip_added: '🤝', vip_followup: '📞' };
+                    return (
+                      <div key={a.id || i} className="flex items-start gap-2 py-1.5 border-b border-slate-700/30 last:border-0">
+                        <span className="text-sm mt-0.5">{iconMap[a.activity_type] || '📌'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-slate-300 text-xs leading-relaxed">{a.description}</p>
+                        </div>
+                        <span className="text-slate-600 text-[10px] whitespace-nowrap mt-0.5">{timeAgo}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Combined Revenue/Net Widget - Only shown if user has enabled it */}
             {showRevenueOnHome && (() => {
@@ -2872,6 +3010,9 @@ export default function MomentumApp() {
                 }
                 await db.pipeline.update(deal.id, { stage: newStage, updated_at: new Date().toISOString() });
                 setPipelineDeals(prev => prev.map(d => d.id === deal.id ? { ...d, stage: newStage } : d));
+                const name = currentUser.display_name || currentUser.name;
+                const stageLabels = { lead: 'Lead', offer_sent: 'Offer Sent', under_contract: 'Under Contract', closing: 'Closing' };
+                logActivity('pipeline_move', `${name} moved "${deal.property_address}" to ${stageLabels[newStage] || newStage}`, { address: deal.property_address, stage: newStage });
               };
               
               const editPipeline = (deal) => {
@@ -2947,6 +3088,11 @@ export default function MomentumApp() {
                 const daysInStage = Math.floor((new Date() - new Date(deal.updated_at || deal.created_at)) / 86400000);
                 const estRev = parseFloat(deal.est_revenue || 0) || (parseFloat(deal.sold_price || 0) - parseFloat(deal.uc_price || deal.offer_amount || 0)) || 0;
                 
+                // Due diligence countdown
+                const ddLeft = deal.inspection_date ? Math.ceil((new Date(deal.inspection_date) - new Date()) / 86400000) : null;
+                // Closing countdown
+                const closeLeft = deal.est_close_date ? Math.ceil((new Date(deal.est_close_date) - new Date()) / 86400000) : null;
+                
                 return (
                   <div className="bg-slate-800 rounded-lg p-3 border border-slate-700/50 hover:border-slate-600 transition group">
                     <div className="flex items-start justify-between gap-2">
@@ -2960,6 +3106,29 @@ export default function MomentumApp() {
                           {deal.offer_amount && <span className="text-purple-400 text-[10px]">Offer: ${(parseFloat(deal.offer_amount)/1000).toFixed(0)}k</span>}
                           {deal.uc_price && <span className="text-amber-400 text-[10px]">UC: ${(parseFloat(deal.uc_price)/1000).toFixed(0)}k</span>}
                         </div>
+                        {/* Due Diligence Countdown */}
+                        {ddLeft !== null && (deal.stage === 'under_contract' || deal.stage === 'closing') && (
+                          <div className={`flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md text-[10px] font-semibold ${
+                            ddLeft < 0 ? 'bg-red-500/15 text-red-400 border border-red-500/20' : 
+                            ddLeft <= 3 ? 'bg-red-500/10 text-red-400' : 
+                            ddLeft <= 7 ? 'bg-amber-500/10 text-amber-400' : 
+                            'bg-slate-700/50 text-slate-400'
+                          }`}>
+                            <span>{ddLeft < 0 ? '⛔' : ddLeft <= 3 ? '🔴' : ddLeft <= 7 ? '🟡' : '🟢'}</span>
+                            <span>{ddLeft < 0 ? `DD expired ${Math.abs(ddLeft)}d ago` : ddLeft === 0 ? 'DD expires TODAY' : `${ddLeft}d left for DD`}</span>
+                          </div>
+                        )}
+                        {/* Closing Countdown */}
+                        {closeLeft !== null && deal.stage === 'closing' && (
+                          <div className={`flex items-center gap-1.5 mt-1 px-2 py-1 rounded-md text-[10px] font-semibold ${
+                            closeLeft < 0 ? 'bg-red-500/10 text-red-400' : 
+                            closeLeft <= 3 ? 'bg-amber-500/10 text-amber-400' : 
+                            'bg-green-500/10 text-green-400'
+                          }`}>
+                            <span>🏁</span>
+                            <span>{closeLeft < 0 ? `Close date was ${Math.abs(closeLeft)}d ago` : closeLeft === 0 ? 'Closing TODAY' : `${closeLeft}d to close`}</span>
+                          </div>
+                        )}
                         {canSeeNet(deal) && estRev > 0 && (
                           <p className="text-green-400 text-xs font-semibold mt-1">Est. ${estRev >= 1000 ? `${(estRev/1000).toFixed(0)}k` : estRev.toFixed(0)}</p>
                         )}
@@ -3078,7 +3247,7 @@ export default function MomentumApp() {
                               </div>
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="text-slate-400 text-xs">Inspection Date</label>
+                                <label className="text-slate-400 text-xs">DD / Inspection Deadline</label>
                                   <input type="date" value={pipelineForm.inspection_date} onChange={e => setPipelineForm(f => ({ ...f, inspection_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
                                 </div>
                                 <div>
@@ -3240,6 +3409,22 @@ export default function MomentumApp() {
                                 {canSeeNet(deal) && estRev > 0 && (
                                   <span className="text-green-400 text-xs font-semibold whitespace-nowrap">${estRev >= 1000 ? `${(estRev/1000).toFixed(0)}k` : estRev.toFixed(0)}</span>
                                 )}
+                                {/* DD / Close countdown in list */}
+                                {(() => {
+                                  const ddLeft = deal.inspection_date ? Math.ceil((new Date(deal.inspection_date) - new Date()) / 86400000) : null;
+                                  const closeLeft = deal.est_close_date ? Math.ceil((new Date(deal.est_close_date) - new Date()) / 86400000) : null;
+                                  if (ddLeft !== null && (deal.stage === 'under_contract' || deal.stage === 'closing')) {
+                                    return (
+                                      <span className={`text-[10px] font-semibold whitespace-nowrap px-1.5 py-0.5 rounded ${ddLeft < 0 ? 'text-red-400 bg-red-500/10' : ddLeft <= 3 ? 'text-red-400' : ddLeft <= 7 ? 'text-amber-400' : 'text-slate-500'}`}>
+                                        {ddLeft < 0 ? `⛔ DD +${Math.abs(ddLeft)}d` : `${ddLeft <= 3 ? '🔴' : ddLeft <= 7 ? '🟡' : '🟢'} ${ddLeft}d DD`}
+                                      </span>
+                                    );
+                                  }
+                                  if (closeLeft !== null && deal.stage === 'closing') {
+                                    return <span className={`text-[10px] font-semibold whitespace-nowrap ${closeLeft <= 3 ? 'text-amber-400' : 'text-slate-500'}`}>🏁 {closeLeft}d</span>;
+                                  }
+                                  return null;
+                                })()}
                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
                                   {nextStage && <button onClick={() => moveStage(deal, nextStage.key)} className={`text-[10px] px-2 py-1 rounded ${badgeMap[nextStage.color]}`}>→ {nextStage.label}</button>}
                                   {deal.stage === 'closing' && <button onClick={() => moveStage(deal, 'closed')} className="text-[10px] px-2 py-1 rounded bg-green-500/20 text-green-400">✅ Close</button>}
@@ -4858,6 +5043,14 @@ export default function MomentumApp() {
                             loadVipAgents();
                           }
                           
+                          // Log activity for deal
+                          if (!editingDeal) {
+                            const name = currentUser.display_name || currentUser.name;
+                            const rev = dealForm.deal_type === 'wholesale' ? (parseFloat(dealForm.sold_price || 0) - parseFloat(dealForm.uc_price || 0)) : parseFloat(dealForm.commission_amount || 0);
+                            logActivity('deal_closed', `${name} closed a deal! 🎉 ${dealForm.property_address}`, { address: dealForm.property_address, revenue: rev });
+                            loadActivityFeed();
+                          }
+                          
                           setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null });
                           setShowAddDeal(false);
                           setEditingDeal(null);
@@ -4876,6 +5069,432 @@ export default function MomentumApp() {
               </div>
             )}
             </>
+            )}
+          </div>
+        )}
+
+        {currentTab === 'goals' && (
+          <div className="space-y-4">
+            {/* Goals Tab Header */}
+            <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/20 rounded-2xl md:rounded-xl p-4 border border-blue-500/20">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">🎯 Goals & Finances</h2>
+              <p className="text-slate-400 text-sm mt-1">Track revenue, estimate taxes, and crush your personal goals</p>
+            </div>
+
+            {/* ===== MONTHLY REVENUE CALENDAR ===== */}
+            {(() => {
+              const year = new Date().getFullYear();
+              const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+              const currentMonth = new Date().getMonth();
+              const monthlyGoal = currentUser?.monthly_goals?.revenue || Math.round((currentUser?.yearly_net_goal || (getGoals().yearly_revenue_goal / (teamMembers.length || 1))) / 12);
+              
+              // Get revenue per month from deals
+              const myDeals = deals.filter(d => {
+                if (currentUser?.role === 'owner') return true;
+                return d.user_id === currentUser?.id || d.split_with_user_id === currentUser?.id;
+              });
+              
+              const monthRevenue = months.map((_, idx) => {
+                return myDeals
+                  .filter(d => {
+                    const dd = new Date(d.closed_date);
+                    return dd.getFullYear() === year && dd.getMonth() === idx;
+                  })
+                  .reduce((sum, d) => sum + (parseFloat(d.revenue || d.commission_amount || 0)), 0);
+              });
+
+              const yearTotal = monthRevenue.reduce((s, v) => s + v, 0);
+              
+              return (
+                <div className="bg-slate-800/80 rounded-2xl md:rounded-xl p-4 border border-slate-700/50">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-white font-bold flex items-center gap-2"><span>📅</span> {year} Monthly Revenue</h3>
+                    <div className="text-right">
+                      <p className="text-green-400 font-bold text-lg">${(yearTotal/1000).toFixed(0)}k</p>
+                      <p className="text-slate-500 text-[10px]">YTD Total</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
+                    {months.map((m, idx) => {
+                      const rev = monthRevenue[idx];
+                      const pct = monthlyGoal > 0 ? Math.min((rev / monthlyGoal) * 100, 100) : 0;
+                      const isCurrent = idx === currentMonth;
+                      const isFuture = idx > currentMonth;
+                      return (
+                        <div key={m} className={`rounded-lg p-2 border ${isCurrent ? 'border-blue-500/50 bg-blue-500/10' : isFuture ? 'border-slate-700/30 bg-slate-800/30' : 'border-slate-700/50 bg-slate-800/50'}`}>
+                          <p className={`text-[10px] font-semibold ${isCurrent ? 'text-blue-400' : 'text-slate-500'}`}>{m}</p>
+                          <p className={`text-sm font-bold ${rev > 0 ? 'text-white' : 'text-slate-700'}`}>${rev >= 1000 ? `${(rev/1000).toFixed(0)}k` : rev.toFixed(0)}</p>
+                          <div className="h-1 bg-slate-700 rounded-full mt-1 overflow-hidden">
+                            <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-green-500' : pct >= 50 ? 'bg-blue-500' : 'bg-slate-500'}`} style={{ width: `${pct}%` }} />
+                          </div>
+                          {monthlyGoal > 0 && <p className="text-[8px] text-slate-600 mt-0.5">{Math.round(pct)}% of ${(monthlyGoal/1000).toFixed(0)}k</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-700/50 flex items-center gap-3">
+                    <label className="text-slate-400 text-xs">Monthly Target: $</label>
+                    <input
+                      type="number"
+                      value={currentUser?.monthly_goals?.revenue || ''}
+                      onChange={async (e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        const updatedGoals = { ...(currentUser?.monthly_goals || {}), revenue: val };
+                        await db.users.update(currentUser.id, { monthly_goals: updatedGoals });
+                        setCurrentUser(prev => ({ ...prev, monthly_goals: updatedGoals }));
+                        localStorage.setItem('momentum_user', JSON.stringify({ ...currentUser, monthly_goals: updatedGoals }));
+                      }}
+                      className="bg-slate-700 text-white px-3 py-1.5 rounded-lg border border-slate-600 text-sm w-32"
+                      placeholder="Auto from yearly"
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ===== TAX TRACKER ===== */}
+            {(() => {
+              const taxSettings = currentUser?.tax_settings || {};
+              const hasTaxSetup = taxSettings.filing_status && taxSettings.estimated_annual;
+              
+              // Calculate income from deals
+              const year = new Date().getFullYear();
+              const myDeals = deals.filter(d => {
+                const dd = new Date(d.closed_date);
+                if (dd.getFullYear() !== year) return false;
+                return d.user_id === currentUser?.id || d.split_with_user_id === currentUser?.id;
+              });
+              
+              const totalEarned = myDeals.reduce((sum, d) => {
+                const rev = parseFloat(d.revenue || d.commission_amount || 0);
+                // If split partner, calculate their share
+                if (d.split_with_user_id === currentUser?.id && d.user_id !== currentUser?.id) {
+                  if (d.split_type === 'fixed') return sum + parseFloat(d.split_amount || 0);
+                  return sum + rev * (100 - parseFloat(d.split_percentage || 50)) / 100;
+                }
+                return sum + rev;
+              }, 0);
+              
+              const estAnnual = parseFloat(taxSettings.estimated_annual || totalEarned * 2) || totalEarned * 2;
+              const rates = estimateTaxRate(estAnnual, taxSettings.filing_status || 'single');
+              const taxOwed = totalEarned * rates.total;
+              const quarterlyPayment = taxOwed / 4;
+              
+              // Quarterly due dates
+              const quarters = [
+                { q: 'Q1', due: 'Apr 15', months: 'Jan-Mar', earned: 0 },
+                { q: 'Q2', due: 'Jun 15', months: 'Apr-Jun', earned: 0 },
+                { q: 'Q3', due: 'Sep 15', months: 'Jul-Sep', earned: 0 },
+                { q: 'Q4', due: 'Jan 15', months: 'Oct-Dec', earned: 0 }
+              ];
+              myDeals.forEach(d => {
+                const m = new Date(d.closed_date).getMonth();
+                const rev = parseFloat(d.revenue || d.commission_amount || 0);
+                if (m < 3) quarters[0].earned += rev;
+                else if (m < 6) quarters[1].earned += rev;
+                else if (m < 9) quarters[2].earned += rev;
+                else quarters[3].earned += rev;
+              });
+              
+              return (
+                <div className="bg-slate-800/80 rounded-2xl md:rounded-xl p-4 border border-slate-700/50">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-white font-bold flex items-center gap-2"><span>🧾</span> Tax Estimator</h3>
+                    <button onClick={() => {
+                      const ts = currentUser?.tax_settings || {};
+                      setTaxForm({ filing_status: ts.filing_status || 'single', estimated_annual: ts.estimated_annual || '', has_other_income: ts.has_other_income || false, other_income: ts.other_income || '', deductions: ts.deductions || 'standard' });
+                      setShowTaxSetup(true);
+                    }} className="text-xs px-3 py-1 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600">
+                      {hasTaxSetup ? '⚙️ Update' : '⚙️ Setup'}
+                    </button>
+                  </div>
+                  
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 mb-3">
+                    <p className="text-amber-400 text-[10px]">⚠️ Estimates only — consult your accountant. As a 1099 independent contractor, you must file quarterly estimated taxes.</p>
+                  </div>
+
+                  {/* Summary */}
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="bg-slate-700/50 rounded-lg p-2.5 text-center">
+                      <p className="text-slate-400 text-[10px]">YTD Earned</p>
+                      <p className="text-white font-bold text-lg">${(totalEarned/1000).toFixed(1)}k</p>
+                    </div>
+                    <div className="bg-red-500/10 rounded-lg p-2.5 text-center border border-red-500/10">
+                      <p className="text-slate-400 text-[10px]">Est. Tax Owed</p>
+                      <p className="text-red-400 font-bold text-lg">${(taxOwed/1000).toFixed(1)}k</p>
+                    </div>
+                    <div className="bg-green-500/10 rounded-lg p-2.5 text-center border border-green-500/10">
+                      <p className="text-slate-400 text-[10px]">After Tax</p>
+                      <p className="text-green-400 font-bold text-lg">${((totalEarned - taxOwed)/1000).toFixed(1)}k</p>
+                    </div>
+                  </div>
+
+                  {/* Rate breakdown */}
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="bg-slate-700/30 rounded p-2 text-center">
+                      <p className="text-[10px] text-slate-500">Federal</p>
+                      <p className="text-white text-sm font-semibold">{(rates.federal * 100).toFixed(0)}%</p>
+                    </div>
+                    <div className="bg-slate-700/30 rounded p-2 text-center">
+                      <p className="text-[10px] text-slate-500">NJ State</p>
+                      <p className="text-white text-sm font-semibold">{(rates.state * 100).toFixed(1)}%</p>
+                    </div>
+                    <div className="bg-slate-700/30 rounded p-2 text-center">
+                      <p className="text-[10px] text-slate-500">Self-Emp</p>
+                      <p className="text-white text-sm font-semibold">{(rates.selfEmployment * 100).toFixed(1)}%</p>
+                    </div>
+                  </div>
+
+                  {/* Quarterly breakdown */}
+                  <p className="text-slate-400 text-xs font-semibold mb-2">Quarterly Estimates</p>
+                  <div className="space-y-1.5">
+                    {quarters.map((q, i) => {
+                      const qTax = q.earned * rates.total;
+                      const currentQ = Math.floor(new Date().getMonth() / 3);
+                      return (
+                        <div key={q.q} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${i === currentQ ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-slate-700/30'}`}>
+                          <span className={`text-xs font-bold ${i === currentQ ? 'text-blue-400' : 'text-slate-500'}`}>{q.q}</span>
+                          <div className="flex-1">
+                            <p className="text-slate-400 text-[10px]">{q.months} • Due {q.due}</p>
+                          </div>
+                          <span className="text-slate-400 text-xs">${(q.earned/1000).toFixed(1)}k earned</span>
+                          <span className="text-red-400 text-xs font-semibold">${qTax > 0 ? (qTax/1000).toFixed(1) + 'k' : '—'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Per-deal tax impact - last 3 deals */}
+                  {myDeals.length > 0 && (
+                    <>
+                      <p className="text-slate-400 text-xs font-semibold mb-2 mt-3">Recent Deal Tax Impact</p>
+                      <div className="space-y-1">
+                        {myDeals.slice(0, 3).map(d => {
+                          const rev = parseFloat(d.revenue || d.commission_amount || 0);
+                          const dealTax = rev * rates.total;
+                          return (
+                            <div key={d.id} className="flex items-center justify-between px-3 py-2 bg-slate-700/30 rounded-lg">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-white text-xs font-medium truncate">{d.property_address}</p>
+                                <p className="text-slate-500 text-[10px]">{new Date(d.closed_date).toLocaleDateString()}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-green-400 text-xs">+${rev.toLocaleString()}</p>
+                                <p className="text-red-400 text-[10px]">-${dealTax.toLocaleString(undefined, { maximumFractionDigits: 0 })} tax</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Tax Setup Modal */}
+            {showTaxSetup && (
+              <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                <div className="bg-slate-800 rounded-2xl w-full max-w-md border border-slate-700 max-h-[90vh] flex flex-col">
+                  <div className="flex justify-between items-center p-5 pb-3 border-b border-slate-700">
+                    <h3 className="text-lg font-bold text-white">🧾 Tax Setup</h3>
+                    <button onClick={() => setShowTaxSetup(false)} className="text-slate-400 hover:text-white text-2xl">×</button>
+                  </div>
+                  <div className="p-5 pt-3 space-y-4">
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                      <p className="text-amber-400 text-xs">This is an estimate only. Please consult your accountant for accurate tax filing. As a 1099 contractor, file quarterly estimated taxes.</p>
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-xs">Filing Status</label>
+                      <select value={taxForm.filing_status} onChange={e => setTaxForm(p => ({ ...p, filing_status: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm">
+                        <option value="single">Single</option>
+                        <option value="married_joint">Married Filing Jointly</option>
+                        <option value="married_separate">Married Filing Separately</option>
+                        <option value="head_household">Head of Household</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-xs">Estimated Annual Income from RE ($)</label>
+                      <input type="number" value={taxForm.estimated_annual} onChange={e => setTaxForm(p => ({ ...p, estimated_annual: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="e.g. 150000" />
+                    </div>
+                    <div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={taxForm.has_other_income} onChange={e => setTaxForm(p => ({ ...p, has_other_income: e.target.checked }))} className="w-4 h-4 rounded" />
+                        <span className="text-slate-300 text-sm">I have other income (W2, investments, etc.)</span>
+                      </label>
+                      {taxForm.has_other_income && (
+                        <input type="number" value={taxForm.other_income} onChange={e => setTaxForm(p => ({ ...p, other_income: e.target.value }))} className="w-full mt-2 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Additional annual income" />
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-xs">Deductions</label>
+                      <select value={taxForm.deductions} onChange={e => setTaxForm(p => ({ ...p, deductions: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm">
+                        <option value="standard">Standard Deduction</option>
+                        <option value="itemized">Itemized (consult accountant)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 p-5 pt-3 border-t border-slate-700">
+                    <button onClick={() => setShowTaxSetup(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+                    <button onClick={async () => {
+                      const taxData = { ...taxForm, estimated_annual: parseFloat(taxForm.estimated_annual) || 0, other_income: parseFloat(taxForm.other_income) || 0 };
+                      await db.users.update(currentUser.id, { tax_settings: taxData });
+                      setCurrentUser(prev => ({ ...prev, tax_settings: taxData }));
+                      localStorage.setItem('momentum_user', JSON.stringify({ ...currentUser, tax_settings: taxData }));
+                      setShowTaxSetup(false);
+                    }} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-lg text-sm font-semibold">Save</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ===== PERSONAL GOALS ===== */}
+            <div className="bg-slate-800/80 rounded-2xl md:rounded-xl p-4 border border-slate-700/50">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-white font-bold flex items-center gap-2"><span>🏆</span> Personal Goals</h3>
+                <button onClick={() => { setShowAddGoal(true); setEditingGoal(null); setGoalForm({ name: '', target_amount: '', current_amount: '', category: 'savings', icon: '🎯' }); }} className="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold">+ Add Goal</button>
+              </div>
+              
+              {personalGoals.length === 0 ? (
+                <div className="text-center py-6">
+                  <span className="text-3xl block mb-2">🎯</span>
+                  <p className="text-slate-500 text-sm">No goals yet. Add one to start tracking!</p>
+                  <p className="text-slate-600 text-xs mt-1">Mortgage payoff, savings target, car payment...</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {personalGoals.map(goal => {
+                    const pct = goal.target_amount > 0 ? Math.min((parseFloat(goal.current_amount) / parseFloat(goal.target_amount)) * 100, 100) : 0;
+                    const remaining = Math.max(0, parseFloat(goal.target_amount) - parseFloat(goal.current_amount));
+                    const categoryColors = { mortgage: 'from-red-500 to-orange-500', savings: 'from-green-500 to-emerald-500', car: 'from-blue-500 to-cyan-500', debt: 'from-purple-500 to-pink-500', custom: 'from-yellow-500 to-amber-500' };
+                    const gradClass = categoryColors[goal.category] || categoryColors.custom;
+                    return (
+                      <div key={goal.id} className="bg-slate-700/40 rounded-xl p-3 border border-slate-700/50 group">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">{goal.icon}</span>
+                            <div>
+                              <p className="text-white font-semibold text-sm">{goal.name}</p>
+                              <p className="text-slate-500 text-[10px] uppercase">{goal.category}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                            <button onClick={() => {
+                              setGoalForm({ name: goal.name, target_amount: goal.target_amount, current_amount: goal.current_amount, category: goal.category, icon: goal.icon });
+                              setEditingGoal(goal);
+                              setShowAddGoal(true);
+                            }} className="text-xs p-1 text-slate-500 hover:text-white">✏️</button>
+                            <button onClick={async () => {
+                              if (!confirm('Delete this goal?')) return;
+                              await db.personalGoals.delete(goal.id);
+                              setPersonalGoals(prev => prev.filter(g => g.id !== goal.id));
+                            }} className="text-xs p-1 text-slate-500 hover:text-red-400">🗑️</button>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 mb-1.5">
+                          <div className="flex-1 h-3 bg-slate-800 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full bg-gradient-to-r ${gradClass} transition-all`} style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-white font-bold text-sm">{Math.round(pct)}%</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-400">${parseFloat(goal.current_amount).toLocaleString()} saved</span>
+                          <span className="text-slate-500">${remaining.toLocaleString()} to go</span>
+                          <span className="text-white font-medium">${parseFloat(goal.target_amount).toLocaleString()}</span>
+                        </div>
+                        {/* Quick update */}
+                        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/50">
+                          <input
+                            type="number"
+                            placeholder="+ amount"
+                            className="flex-1 bg-slate-800 text-white px-3 py-1.5 rounded-lg border border-slate-600 text-xs"
+                            onKeyDown={async (e) => {
+                              if (e.key === 'Enter' && e.target.value) {
+                                const add = parseFloat(e.target.value) || 0;
+                                const newAmount = parseFloat(goal.current_amount) + add;
+                                await db.personalGoals.update(goal.id, { current_amount: newAmount, updated_at: new Date().toISOString() });
+                                setPersonalGoals(prev => prev.map(g => g.id === goal.id ? { ...g, current_amount: newAmount } : g));
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                          <span className="text-slate-600 text-[10px]">Enter to add</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Add/Edit Goal Modal */}
+            {showAddGoal && (
+              <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                <div className="bg-slate-800 rounded-2xl w-full max-w-sm border border-slate-700">
+                  <div className="flex justify-between items-center p-5 pb-3 border-b border-slate-700">
+                    <h3 className="text-lg font-bold text-white">{editingGoal ? 'Edit Goal' : 'Add Goal'}</h3>
+                    <button onClick={() => { setShowAddGoal(false); setEditingGoal(null); }} className="text-slate-400 hover:text-white text-2xl">×</button>
+                  </div>
+                  <div className="p-5 pt-3 space-y-3">
+                    <div>
+                      <label className="text-slate-400 text-xs">Goal Name</label>
+                      <input type="text" value={goalForm.name} onChange={e => setGoalForm(f => ({ ...f, name: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="e.g. Pay off mortgage" />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-xs">Category</label>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {[
+                          { key: 'mortgage', icon: '🏠', label: 'Mortgage' },
+                          { key: 'savings', icon: '💰', label: 'Savings' },
+                          { key: 'car', icon: '🚗', label: 'Car' },
+                          { key: 'debt', icon: '💳', label: 'Debt' },
+                          { key: 'custom', icon: '⭐', label: 'Custom' }
+                        ].map(c => (
+                          <button key={c.key} onClick={() => setGoalForm(f => ({ ...f, category: c.key, icon: c.icon }))} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${goalForm.category === c.key ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                            {c.icon} {c.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-slate-400 text-xs">Target Amount ($)</label>
+                        <input type="number" value={goalForm.target_amount} onChange={e => setGoalForm(f => ({ ...f, target_amount: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="250000" />
+                      </div>
+                      <div>
+                        <label className="text-slate-400 text-xs">Current Progress ($)</label>
+                        <input type="number" value={goalForm.current_amount} onChange={e => setGoalForm(f => ({ ...f, current_amount: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="50000" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 p-5 pt-3 border-t border-slate-700">
+                    <button onClick={() => { setShowAddGoal(false); setEditingGoal(null); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+                    <button onClick={async () => {
+                      if (!goalForm.name || !goalForm.target_amount) { alert('Name and target required'); return; }
+                      const data = {
+                        user_id: currentUser.id,
+                        organization_id: organization.id,
+                        name: goalForm.name,
+                        target_amount: parseFloat(goalForm.target_amount) || 0,
+                        current_amount: parseFloat(goalForm.current_amount) || 0,
+                        category: goalForm.category,
+                        icon: goalForm.icon,
+                        updated_at: new Date().toISOString()
+                      };
+                      if (editingGoal) {
+                        await db.personalGoals.update(editingGoal.id, data);
+                        setPersonalGoals(prev => prev.map(g => g.id === editingGoal.id ? { ...g, ...data } : g));
+                      } else {
+                        data.created_at = new Date().toISOString();
+                        const { data: result } = await db.personalGoals.create(data);
+                        if (result?.[0]) setPersonalGoals(prev => [result[0], ...prev]);
+                      }
+                      setShowAddGoal(false);
+                      setEditingGoal(null);
+                    }} className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg text-sm font-semibold">{editingGoal ? 'Update' : 'Add Goal'}</button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}
