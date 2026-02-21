@@ -1354,19 +1354,27 @@ export default function MomentumApp() {
     assignment_contract: null,
     hud: null
   });
+  const [pipelineFiles, setPipelineFiles] = useState({
+    psa: null,
+    ar_addendum: null,
+    assignment: null,
+    hud: null
+  });
   const [dealsView, setDealsView] = useState('pipeline'); // 'pipeline' or 'closed'
   const [pipelineViewMode, setPipelineViewMode] = useState('kanban'); // 'kanban' or 'list'
   const [showAddPipeline, setShowAddPipeline] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState(null);
   const [pipelineForm, setPipelineForm] = useState({
     property_address: '', zillow_url: '', asking_price: '', deal_source: 'on_market', deal_type: 'wholesale',
-    offer_amount: '', offer_date: '', uc_price: '', uc_date: '', inspection_date: '',
+    offer_amount: '', offer_date: '', accepted_price: '', uc_price: '', uc_date: '', inspection_date: '',
     est_close_date: '', est_revenue: '', sold_price: '',
     agent_name: '', agent_email: '', agent_phone: '',
     stage: 'offer_accepted', notes: '', sourced_by_user_id: '',
     ar_complete: false, ar_complete_date: '',
+    had_price_reduction: false, revised_uc_price: '',
     buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '',
-    documents: { psa: false, ar_addendum: false, assignment: false, hud: false }
+    documents: { psa: false, ar_addendum: false, assignment: false, hud: false },
+    psa_url: '', ar_addendum_url: '', assignment_url: '', hud_url: ''
   });
 
   // Activity Feed & Goals state
@@ -3077,7 +3085,7 @@ export default function MomentumApp() {
                     </button>
                   </div>
                   <button
-                    onClick={() => { setShowAddPipeline(true); setEditingPipeline(null); setPipelineForm({ property_address: '', zillow_url: '', asking_price: '', deal_source: 'on_market', deal_type: 'wholesale', offer_amount: '', offer_date: '', uc_price: '', uc_date: '', inspection_date: '', est_close_date: '', est_revenue: '', sold_price: '', agent_name: '', agent_email: '', agent_phone: '', stage: 'offer_accepted', notes: '', sourced_by_user_id: '', ar_complete: false, ar_complete_date: '', buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '', documents: { psa: false, ar_addendum: false, assignment: false, hud: false } }); }}
+                    onClick={() => { setShowAddPipeline(true); setEditingPipeline(null); setPipelineForm({ property_address: '', zillow_url: '', asking_price: '', deal_source: 'on_market', deal_type: 'wholesale', offer_amount: '', offer_date: '', accepted_price: '', uc_price: '', uc_date: '', inspection_date: '', est_close_date: '', est_revenue: '', sold_price: '', agent_name: '', agent_email: '', agent_phone: '', stage: 'offer_accepted', notes: '', sourced_by_user_id: '', ar_complete: false, ar_complete_date: '', had_price_reduction: false, revised_uc_price: '', buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '', documents: { psa: false, ar_addendum: false, assignment: false, hud: false }, psa_url: '', ar_addendum_url: '', assignment_url: '', hud_url: '' }); setPipelineFiles({ psa: null, ar_addendum: null, assignment: null, hud: null }); }}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-sm"
                   >
                     + Add Deal
@@ -3122,7 +3130,7 @@ export default function MomentumApp() {
                 const updates = { ar_complete: newVal, ar_complete_date: newVal ? getTodayInOrgTimezone() : null, updated_at: new Date().toISOString() };
                 if (newVal) {
                   updates.stage = 'under_contract';
-                  if (!deal.uc_price) updates.uc_price = deal.offer_amount;
+                  if (!deal.uc_price) updates.uc_price = deal.accepted_price || deal.offer_amount;
                   if (!deal.uc_date) updates.uc_date = getTodayInOrgTimezone();
                 }
                 await db.pipeline.update(deal.id, updates);
@@ -3143,7 +3151,7 @@ export default function MomentumApp() {
                 if (newStage === 'closed') {
                   setDealForm({
                     property_address: deal.property_address || '',
-                    uc_price: deal.uc_price || deal.offer_amount || '',
+                    uc_price: deal.revised_uc_price || deal.uc_price || deal.accepted_price || deal.offer_amount || '',
                     sold_price: deal.sold_price || '',
                     split_with_user_id: deal.sourced_by_user_id || '',
                     split_percentage: '50', split_type: 'percentage', split_amount: '',
@@ -3151,11 +3159,11 @@ export default function MomentumApp() {
                     notes: deal.notes || '',
                     deal_source: deal.deal_source || 'on_market',
                     original_list_price: deal.asking_price || '',
-                    had_price_reduction: false, original_uc_price: '',
+                    had_price_reduction: deal.had_price_reduction || false, original_uc_price: deal.had_price_reduction ? (deal.uc_price || '') : '',
                     deal_type: deal.deal_type || 'wholesale',
                     sale_price: '', commission_amount: '',
                     list_back_secured: false, list_back_commission_pct: '',
-                    purchase_contract_url: '', assignment_contract_url: '', hud_url: '',
+                    purchase_contract_url: deal.psa_url || '', assignment_contract_url: deal.assignment_url || '', hud_url: deal.hud_url || '',
                     dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '',
                     dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '',
                     realtor_commission_paid: false, realtor_commission_type: 'percentage',
@@ -3183,6 +3191,7 @@ export default function MomentumApp() {
                   asking_price: deal.asking_price || '', deal_source: deal.deal_source || 'on_market',
                   deal_type: deal.deal_type || 'wholesale',
                   offer_amount: deal.offer_amount || '', offer_date: deal.offer_date || '',
+                  accepted_price: deal.accepted_price || '',
                   uc_price: deal.uc_price || '', uc_date: deal.uc_date || '', inspection_date: deal.inspection_date || '',
                   est_close_date: deal.est_close_date || '', est_revenue: deal.est_revenue || '', sold_price: deal.sold_price || '',
                   agent_name: deal.agent_name || '', agent_email: deal.agent_email || '', agent_phone: deal.agent_phone || '',
@@ -3191,9 +3200,13 @@ export default function MomentumApp() {
                   ar_complete: deal.ar_complete || false, ar_complete_date: deal.ar_complete_date || '',
                   buyer_name: deal.buyer_name || '', buyer_emd_submitted: deal.buyer_emd_submitted || false,
                   buyer_emd_amount: deal.buyer_emd_amount || '',
-                  documents: deal.documents || { psa: false, ar_addendum: false, assignment: false, hud: false }
+                  had_price_reduction: deal.had_price_reduction || false, revised_uc_price: deal.revised_uc_price || '',
+                  documents: deal.documents || { psa: false, ar_addendum: false, assignment: false, hud: false },
+                  psa_url: deal.psa_url || '', ar_addendum_url: deal.ar_addendum_url || '',
+                  assignment_url: deal.assignment_url || '', hud_url: deal.hud_url || ''
                 });
                 setEditingPipeline(deal);
+                setPipelineFiles({ psa: null, ar_addendum: null, assignment: null, hud: null });
                 setShowAddPipeline(true);
               };
               
@@ -3216,6 +3229,7 @@ export default function MomentumApp() {
                   deal_type: pipelineForm.deal_type,
                   offer_amount: pipelineForm.offer_amount ? parseFloat(pipelineForm.offer_amount) : null,
                   offer_date: pipelineForm.offer_date || null,
+                  accepted_price: pipelineForm.accepted_price ? parseFloat(pipelineForm.accepted_price) : null,
                   uc_price: pipelineForm.uc_price ? parseFloat(pipelineForm.uc_price) : null,
                   uc_date: pipelineForm.uc_date || null,
                   inspection_date: pipelineForm.inspection_date || null,
@@ -3232,20 +3246,51 @@ export default function MomentumApp() {
                   buyer_name: pipelineForm.buyer_name || null,
                   buyer_emd_submitted: pipelineForm.buyer_emd_submitted || false,
                   buyer_emd_amount: pipelineForm.buyer_emd_amount ? parseFloat(pipelineForm.buyer_emd_amount) : null,
+                  had_price_reduction: pipelineForm.had_price_reduction || false,
+                  revised_uc_price: pipelineForm.revised_uc_price ? parseFloat(pipelineForm.revised_uc_price) : null,
                   documents: pipelineForm.documents || {},
+                  psa_url: pipelineForm.psa_url || null,
+                  ar_addendum_url: pipelineForm.ar_addendum_url || null,
+                  assignment_url: pipelineForm.assignment_url || null,
+                  hud_url: pipelineForm.hud_url || null,
                   updated_at: new Date().toISOString()
                 };
                 try {
+                  let dealId;
                   if (editingPipeline) {
                     await db.pipeline.update(editingPipeline.id, data);
+                    dealId = editingPipeline.id;
                     setPipelineDeals(prev => prev.map(d => d.id === editingPipeline.id ? { ...d, ...data } : d));
                   } else {
                     data.created_at = new Date().toISOString();
                     const { data: result } = await db.pipeline.create(data);
-                    if (result?.[0]) setPipelineDeals(prev => [result[0], ...prev]);
+                    if (result?.[0]) {
+                      dealId = result[0].id;
+                      setPipelineDeals(prev => [result[0], ...prev]);
+                    }
+                  }
+                  // Upload any attached files
+                  if (dealId) {
+                    const docUpdates = {};
+                    for (const [key, file] of Object.entries(pipelineFiles)) {
+                      if (file) {
+                        const url = await uploadDealDocument(file, `pipeline_${dealId}`, key);
+                        if (url) docUpdates[`${key}_url`] = url;
+                      }
+                    }
+                    if (Object.keys(docUpdates).length > 0) {
+                      const updatedDocs = { ...data.documents };
+                      for (const key of Object.keys(docUpdates)) {
+                        const docKey = key.replace('_url', '');
+                        updatedDocs[docKey] = true;
+                      }
+                      await db.pipeline.update(dealId, { ...docUpdates, documents: updatedDocs });
+                      setPipelineDeals(prev => prev.map(d => d.id === dealId ? { ...d, ...docUpdates, documents: updatedDocs } : d));
+                    }
                   }
                   setShowAddPipeline(false);
                   setEditingPipeline(null);
+                  setPipelineFiles({ psa: null, ar_addendum: null, assignment: null, hud: null });
                 } catch (e) {
                   alert('Error saving pipeline deal. Run the SQL migration first!');
                 }
@@ -3258,7 +3303,7 @@ export default function MomentumApp() {
                 const member = teamMembers.find(m => m.id === (deal.sourced_by_user_id || deal.user_id));
                 const memberName = member?.display_name || member?.name || '';
                 const daysInStage = Math.floor((new Date() - new Date(deal.updated_at || deal.created_at)) / 86400000);
-                const estRev = parseFloat(deal.est_revenue || 0) || (parseFloat(deal.sold_price || 0) - parseFloat(deal.uc_price || deal.offer_amount || 0)) || 0;
+                const estRev = parseFloat(deal.est_revenue || 0) || (parseFloat(deal.sold_price || 0) - parseFloat(deal.revised_uc_price || deal.uc_price || deal.accepted_price || deal.offer_amount || 0)) || 0;
                 const ddLeft = deal.inspection_date ? Math.ceil((new Date(deal.inspection_date) - new Date()) / 86400000) : null;
                 const closeLeft = deal.est_close_date ? Math.ceil((new Date(deal.est_close_date) - new Date()) / 86400000) : null;
                 const docs = deal.documents || {};
@@ -3267,22 +3312,30 @@ export default function MomentumApp() {
                   <div className="bg-slate-800 rounded-lg p-3 border border-slate-700/50 hover:border-slate-600 transition group">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className="text-white font-semibold text-sm truncate">{deal.property_address}</p>
+                        {deal.zillow_url ? (
+                          <a href={deal.zillow_url} target="_blank" rel="noopener noreferrer" className="text-white font-semibold text-sm truncate hover:text-blue-400 transition underline decoration-slate-600 hover:decoration-blue-400">{deal.property_address}</a>
+                        ) : (
+                          <p className="text-white font-semibold text-sm truncate">{deal.property_address}</p>
+                        )}
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
                           <span className={`text-[10px] px-1.5 py-0.5 rounded ${deal.deal_source === 'off_market' ? 'bg-orange-500/20 text-orange-400' : 'bg-slate-600/50 text-slate-400'}`}>
                             {deal.deal_source === 'off_market' ? '🔥 Off-Market' : '📋 On-Market'}
                           </span>
                           {deal.asking_price && <span className="text-slate-500 text-[10px]">Ask: ${(parseFloat(deal.asking_price)/1000).toFixed(0)}k</span>}
                           {deal.offer_amount && <span className="text-purple-400 text-[10px]">Offer: ${(parseFloat(deal.offer_amount)/1000).toFixed(0)}k</span>}
+                          {deal.accepted_price && parseFloat(deal.accepted_price) !== parseFloat(deal.offer_amount) && <span className="text-green-400 text-[10px]">Accepted: ${(parseFloat(deal.accepted_price)/1000).toFixed(0)}k</span>}
                           {deal.uc_price && <span className="text-amber-400 text-[10px]">UC: ${(parseFloat(deal.uc_price)/1000).toFixed(0)}k</span>}
                         </div>
 
                         {/* Stage-specific info */}
                         {deal.stage === 'offer_accepted' && (
                           <div className="mt-2 space-y-1.5">
-                            <button onClick={() => toggleDoc(deal, 'psa')} className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md transition w-full text-left ${docs.psa ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
-                              {docs.psa ? '✅' : '⬜'} PSA (Purchase & Sale)
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => toggleDoc(deal, 'psa')} className={`flex-1 flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md transition text-left ${docs.psa ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
+                                {docs.psa ? '✅' : '⬜'} PSA
+                              </button>
+                              {deal.psa_url && <a href={deal.psa_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 text-[10px]">📄 View</a>}
+                            </div>
                             <button onClick={() => toggleAR(deal)} className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md transition w-full text-left font-semibold ${deal.ar_complete ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
                               {deal.ar_complete ? '✅ AR Complete' : '⏳ Attorney Review Pending'}
                             </button>
@@ -3291,9 +3344,19 @@ export default function MomentumApp() {
 
                         {deal.stage === 'under_contract' && (
                           <div className="mt-2 space-y-1.5">
-                            <button onClick={() => toggleDoc(deal, 'ar_addendum')} className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md transition w-full text-left ${docs.ar_addendum ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
-                              {docs.ar_addendum ? '✅' : '⬜'} AR Addendum
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => toggleDoc(deal, 'ar_addendum')} className={`flex-1 flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md transition text-left ${docs.ar_addendum ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
+                                {docs.ar_addendum ? '✅' : '⬜'} AR Addendum
+                              </button>
+                              {deal.ar_addendum_url && <a href={deal.ar_addendum_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 text-[10px]">📄 View</a>}
+                            </div>
+                            {deal.had_price_reduction && deal.revised_uc_price && (
+                              <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-orange-500/10 border border-orange-500/20 text-[10px]">
+                                <span className="text-orange-400 font-semibold">📉 Price Reduction:</span>
+                                <span className="text-orange-300">${(parseFloat(deal.uc_price)/1000).toFixed(0)}k → ${(parseFloat(deal.revised_uc_price)/1000).toFixed(0)}k</span>
+                                <span className="text-orange-400/60">(−${((parseFloat(deal.uc_price) - parseFloat(deal.revised_uc_price))/1000).toFixed(0)}k)</span>
+                              </div>
+                            )}
                             {ddLeft !== null && (
                               <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-semibold ${
                                 ddLeft < 0 ? 'bg-red-500/15 text-red-400 border border-red-500/20' : 
@@ -3310,9 +3373,18 @@ export default function MomentumApp() {
 
                         {deal.stage === 'closing' && (
                           <div className="mt-2 space-y-1.5">
-                            <button onClick={() => toggleDoc(deal, 'assignment')} className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md transition w-full text-left ${docs.assignment ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
-                              {docs.assignment ? '✅' : '⬜'} Assignment Agreement
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => toggleDoc(deal, 'assignment')} className={`flex-1 flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md transition text-left ${docs.assignment ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
+                                {docs.assignment ? '✅' : '⬜'} Assignment Agreement
+                              </button>
+                              {deal.assignment_url && <a href={deal.assignment_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 text-[10px]">📄 View</a>}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => toggleDoc(deal, 'hud')} className={`flex-1 flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md transition text-left ${docs.hud ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
+                                {docs.hud ? '✅' : '⬜'} Final HUD
+                              </button>
+                              {deal.hud_url && <a href={deal.hud_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 text-[10px]">📄 View</a>}
+                            </div>
                             {deal.buyer_name && (
                               <p className="text-slate-400 text-[10px]">🏠 Buyer: {deal.buyer_name}</p>
                             )}
@@ -3430,25 +3502,38 @@ export default function MomentumApp() {
                               <input type="number" value={pipelineForm.asking_price} onChange={e => setPipelineForm(f => ({ ...f, asking_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
                             </div>
                             <div>
-                              <label className="text-slate-400 text-xs">Offer Amount ($)</label>
+                              <label className="text-slate-400 text-xs">Original Offer ($)</label>
                               <input type="number" value={pipelineForm.offer_amount} onChange={e => setPipelineForm(f => ({ ...f, offer_amount: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
                             </div>
                           </div>
                           {pipelineForm.offer_amount && (
-                            <div>
-                              <label className="text-slate-400 text-xs">Offer Date</label>
-                              <input type="date" value={pipelineForm.offer_date} onChange={e => setPipelineForm(f => ({ ...f, offer_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="text-slate-400 text-xs">Offer Date</label>
+                                <input type="date" value={pipelineForm.offer_date} onChange={e => setPipelineForm(f => ({ ...f, offer_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                              </div>
+                              <div>
+                                <label className="text-slate-400 text-xs">Final Accepted Price ($)</label>
+                                <input type="number" value={pipelineForm.accepted_price} onChange={e => setPipelineForm(f => ({ ...f, accepted_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder={pipelineForm.offer_amount || 'Same as offer'} />
+                              </div>
                             </div>
                           )}
 
                           {/* Offer Accepted: PSA + AR */}
                           {pipelineForm.stage === 'offer_accepted' && (
-                            <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-3 space-y-2">
+                            <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-3 space-y-3">
                               <p className="text-purple-400 text-xs font-semibold">📄 Offer Accepted Documents</p>
-                              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                <input type="checkbox" checked={pipelineForm.documents?.psa || false} onChange={() => setPipelineForm(f => ({ ...f, documents: { ...f.documents, psa: !f.documents?.psa } }))} className="rounded bg-slate-700 border-slate-600" />
-                                <span className="text-slate-300">PSA (Purchase & Sale) received</span>
-                              </label>
+                              <div>
+                                <div className="flex items-center gap-2 mb-1.5">
+                                  <input type="checkbox" checked={pipelineForm.documents?.psa || false} onChange={() => setPipelineForm(f => ({ ...f, documents: { ...f.documents, psa: !f.documents?.psa } }))} className="rounded bg-slate-700 border-slate-600" />
+                                  <span className="text-slate-300 text-sm">PSA (Purchase & Sale)</span>
+                                  {pipelineForm.psa_url && !pipelineFiles.psa && (
+                                    <a href={pipelineForm.psa_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-xs hover:underline ml-auto">📄 View</a>
+                                  )}
+                                </div>
+                                <input type="file" accept=".pdf,.doc,.docx,.jpg,.png" onChange={e => setPipelineFiles(f => ({ ...f, psa: e.target.files[0] }))} className="w-full text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:bg-slate-600 file:text-white hover:file:bg-slate-500" />
+                                {pipelineFiles.psa && <span className="text-green-400 text-[10px]">✓ {pipelineFiles.psa.name}</span>}
+                              </div>
                               <label className="flex items-center gap-2 text-sm cursor-pointer">
                                 <input type="checkbox" checked={pipelineForm.ar_complete || false} onChange={() => setPipelineForm(f => ({ ...f, ar_complete: !f.ar_complete }))} className="rounded bg-slate-700 border-slate-600" />
                                 <span className="text-slate-300">Attorney Review completed</span>
@@ -3474,11 +3559,33 @@ export default function MomentumApp() {
                                 <input type="date" value={pipelineForm.inspection_date} onChange={e => setPipelineForm(f => ({ ...f, inspection_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
                               </div>
                               {pipelineForm.stage === 'under_contract' && (
-                                <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
-                                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                    <input type="checkbox" checked={pipelineForm.documents?.ar_addendum || false} onChange={() => setPipelineForm(f => ({ ...f, documents: { ...f.documents, ar_addendum: !f.documents?.ar_addendum } }))} className="rounded bg-slate-700 border-slate-600" />
-                                    <span className="text-slate-300">AR Addendum received</span>
-                                  </label>
+                                <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 space-y-3">
+                                  <div>
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                      <input type="checkbox" checked={pipelineForm.documents?.ar_addendum || false} onChange={() => setPipelineForm(f => ({ ...f, documents: { ...f.documents, ar_addendum: !f.documents?.ar_addendum } }))} className="rounded bg-slate-700 border-slate-600" />
+                                      <span className="text-slate-300 text-sm">AR Addendum</span>
+                                      {pipelineForm.ar_addendum_url && !pipelineFiles.ar_addendum && (
+                                        <a href={pipelineForm.ar_addendum_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-xs hover:underline ml-auto">📄 View</a>
+                                      )}
+                                    </div>
+                                    <input type="file" accept=".pdf,.doc,.docx,.jpg,.png" onChange={e => setPipelineFiles(f => ({ ...f, ar_addendum: e.target.files[0] }))} className="w-full text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:bg-slate-600 file:text-white hover:file:bg-slate-500" />
+                                    {pipelineFiles.ar_addendum && <span className="text-green-400 text-[10px]">✓ {pipelineFiles.ar_addendum.name}</span>}
+                                  </div>
+                                  <div>
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer mb-1.5">
+                                      <input type="checkbox" checked={pipelineForm.had_price_reduction || false} onChange={() => setPipelineForm(f => ({ ...f, had_price_reduction: !f.had_price_reduction }))} className="rounded bg-slate-700 border-slate-600" />
+                                      <span className="text-slate-300">Price Reduction After DD</span>
+                                    </label>
+                                    {pipelineForm.had_price_reduction && (
+                                      <div>
+                                        <label className="text-slate-400 text-xs">Revised UC Price ($)</label>
+                                        <input type="number" value={pipelineForm.revised_uc_price} onChange={e => setPipelineForm(f => ({ ...f, revised_uc_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder={pipelineForm.uc_price ? `Original: $${parseFloat(pipelineForm.uc_price).toLocaleString()}` : 'Revised price'} />
+                                        {pipelineForm.uc_price && pipelineForm.revised_uc_price && (
+                                          <p className="text-green-400 text-[10px] mt-1">💰 Saved ${(parseFloat(pipelineForm.uc_price) - parseFloat(pipelineForm.revised_uc_price)).toLocaleString()} from price reduction</p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               )}
                             </>
@@ -3504,10 +3611,28 @@ export default function MomentumApp() {
                                     </div>
                                   )}
                                 </div>
-                                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                  <input type="checkbox" checked={pipelineForm.documents?.assignment || false} onChange={() => setPipelineForm(f => ({ ...f, documents: { ...f.documents, assignment: !f.documents?.assignment } }))} className="rounded bg-slate-700 border-slate-600" />
-                                  <span className="text-slate-300">Assignment Agreement executed</span>
-                                </label>
+                                <div>
+                                  <div className="flex items-center gap-2 mb-1.5">
+                                    <input type="checkbox" checked={pipelineForm.documents?.assignment || false} onChange={() => setPipelineForm(f => ({ ...f, documents: { ...f.documents, assignment: !f.documents?.assignment } }))} className="rounded bg-slate-700 border-slate-600" />
+                                    <span className="text-slate-300 text-sm">Assignment Agreement executed</span>
+                                    {pipelineForm.assignment_url && !pipelineFiles.assignment && (
+                                      <a href={pipelineForm.assignment_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-xs hover:underline ml-auto">📄 View</a>
+                                    )}
+                                  </div>
+                                  <input type="file" accept=".pdf,.doc,.docx,.jpg,.png" onChange={e => setPipelineFiles(f => ({ ...f, assignment: e.target.files[0] }))} className="w-full text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:bg-slate-600 file:text-white hover:file:bg-slate-500" />
+                                  {pipelineFiles.assignment && <span className="text-green-400 text-[10px]">✓ {pipelineFiles.assignment.name}</span>}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 mb-1.5">
+                                    <input type="checkbox" checked={pipelineForm.documents?.hud || false} onChange={() => setPipelineForm(f => ({ ...f, documents: { ...f.documents, hud: !f.documents?.hud } }))} className="rounded bg-slate-700 border-slate-600" />
+                                    <span className="text-slate-300 text-sm">Final HUD / Settlement</span>
+                                    {pipelineForm.hud_url && !pipelineFiles.hud && (
+                                      <a href={pipelineForm.hud_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-xs hover:underline ml-auto">📄 View</a>
+                                    )}
+                                  </div>
+                                  <input type="file" accept=".pdf,.doc,.docx,.jpg,.png" onChange={e => setPipelineFiles(f => ({ ...f, hud: e.target.files[0] }))} className="w-full text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:bg-slate-600 file:text-white hover:file:bg-slate-500" />
+                                  {pipelineFiles.hud && <span className="text-green-400 text-[10px]">✓ {pipelineFiles.hud.name}</span>}
+                                </div>
                               </div>
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
@@ -3560,7 +3685,7 @@ export default function MomentumApp() {
                           </div>
                           {/* Commission Preview */}
                           {(() => {
-                            const uc = parseFloat(pipelineForm.uc_price || pipelineForm.offer_amount || 0);
+                            const uc = parseFloat(pipelineForm.uc_price || pipelineForm.accepted_price || pipelineForm.offer_amount || 0);
                             const sold = parseFloat(pipelineForm.sold_price || 0);
                             const estRev = parseFloat(pipelineForm.est_revenue || 0);
                             const spread = sold && uc ? sold - uc : estRev;
@@ -3593,7 +3718,7 @@ export default function MomentumApp() {
                   <div className="grid grid-cols-3 gap-2">
                     {STAGES.map(s => {
                       const stageDeals = pipelineDeals.filter(d => d.stage === s.key);
-                      const totalEst = stageDeals.reduce((sum, d) => sum + (parseFloat(d.est_revenue || 0) || (parseFloat(d.sold_price || 0) - parseFloat(d.uc_price || d.offer_amount || 0)) || 0), 0);
+                      const totalEst = stageDeals.reduce((sum, d) => sum + (parseFloat(d.est_revenue || 0) || (parseFloat(d.sold_price || 0) - parseFloat(d.revised_uc_price || d.uc_price || d.accepted_price || d.offer_amount || 0)) || 0), 0);
                       return (
                         <div key={s.key} className={`rounded-lg p-3 border ${colorMap[s.color]}`}>
                           <div className="flex items-center gap-1.5 mb-1">
@@ -3646,7 +3771,7 @@ export default function MomentumApp() {
                         <div className="divide-y divide-slate-700/50">
                           {pipelineDeals.map(deal => {
                             const stageInfo = STAGES.find(s => s.key === deal.stage) || STAGES[0];
-                            const estRev = parseFloat(deal.est_revenue || 0) || (parseFloat(deal.sold_price || 0) - parseFloat(deal.uc_price || deal.offer_amount || 0)) || 0;
+                            const estRev = parseFloat(deal.est_revenue || 0) || (parseFloat(deal.sold_price || 0) - parseFloat(deal.revised_uc_price || deal.uc_price || deal.accepted_price || deal.offer_amount || 0)) || 0;
                             const member = teamMembers.find(m => m.id === (deal.sourced_by_user_id || deal.user_id));
                             const stageIdx = STAGES.findIndex(s => s.key === deal.stage);
                             const docs = deal.documents || {};
@@ -3658,7 +3783,11 @@ export default function MomentumApp() {
                                   {stageInfo.icon} {stageInfo.label}
                                 </span>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-white text-sm font-medium truncate">{deal.property_address}</p>
+                                  {deal.zillow_url ? (
+                                    <a href={deal.zillow_url} target="_blank" rel="noopener noreferrer" className="text-white text-sm font-medium truncate block hover:text-blue-400 transition">{deal.property_address}</a>
+                                  ) : (
+                                    <p className="text-white text-sm font-medium truncate">{deal.property_address}</p>
+                                  )}
                                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                     {deal.agent_name && <span className="text-slate-500 text-[10px]">🤝 {deal.agent_name}</span>}
                                     {currentUser?.role === 'owner' && member && <span className="text-blue-400 text-[10px]">{member.avatar_emoji || '👤'} {member.display_name || member.name}</span>}
