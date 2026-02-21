@@ -1368,7 +1368,7 @@ export default function MomentumApp() {
 
   // Activity Feed & Goals state
   const [activityFeed, setActivityFeed] = useState([]);
-  const [personalGoals, setPersonalGoals] = useState([]);
+  const [financialGoals, setFinancialGoals] = useState([]);
   const [showTaxSetup, setShowTaxSetup] = useState(false);
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
@@ -1460,7 +1460,7 @@ export default function MomentumApp() {
       loadDeals();
       loadPipeline();
       loadActivityFeed();
-      loadPersonalGoals();
+      loadFinancialGoals();
       if (organization.kpi_goals) setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
     }
   }, [currentUser, organization]);
@@ -1540,11 +1540,11 @@ export default function MomentumApp() {
     } catch (e) { console.log('Activity feed not ready yet'); }
   };
 
-  const loadPersonalGoals = async () => {
+  const loadFinancialGoals = async () => {
     if (!currentUser) return;
     try {
       const { data } = await db.personalGoals.getByUser(currentUser.id);
-      if (data) setPersonalGoals(data);
+      if (data) setFinancialGoals(data);
     } catch (e) { console.log('Personal goals table not ready yet'); }
   };
 
@@ -5355,7 +5355,7 @@ export default function MomentumApp() {
                 <button onClick={() => { setShowAddGoal(true); setEditingGoal(null); setGoalForm({ name: '', target_amount: '', current_amount: '', category: 'savings', icon: '🎯' }); }} className="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold">+ Add Goal</button>
               </div>
               
-              {personalGoals.length === 0 ? (
+              {financialGoals.length === 0 ? (
                 <div className="text-center py-6">
                   <span className="text-3xl block mb-2">🎯</span>
                   <p className="text-slate-500 text-sm">No goals yet. Add one to start tracking!</p>
@@ -5363,7 +5363,7 @@ export default function MomentumApp() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {personalGoals.map(goal => {
+                  {financialGoals.map(goal => {
                     const pct = goal.target_amount > 0 ? Math.min((parseFloat(goal.current_amount) / parseFloat(goal.target_amount)) * 100, 100) : 0;
                     const remaining = Math.max(0, parseFloat(goal.target_amount) - parseFloat(goal.current_amount));
                     const categoryColors = { mortgage: 'from-red-500 to-orange-500', savings: 'from-green-500 to-emerald-500', car: 'from-blue-500 to-cyan-500', debt: 'from-purple-500 to-pink-500', custom: 'from-yellow-500 to-amber-500' };
@@ -5387,7 +5387,7 @@ export default function MomentumApp() {
                             <button onClick={async () => {
                               if (!confirm('Delete this goal?')) return;
                               await db.personalGoals.delete(goal.id);
-                              setPersonalGoals(prev => prev.filter(g => g.id !== goal.id));
+                              setFinancialGoals(prev => prev.filter(g => g.id !== goal.id));
                             }} className="text-xs p-1 text-slate-500 hover:text-red-400">🗑️</button>
                           </div>
                         </div>
@@ -5413,7 +5413,7 @@ export default function MomentumApp() {
                                 const add = parseFloat(e.target.value) || 0;
                                 const newAmount = parseFloat(goal.current_amount) + add;
                                 await db.personalGoals.update(goal.id, { current_amount: newAmount, updated_at: new Date().toISOString() });
-                                setPersonalGoals(prev => prev.map(g => g.id === goal.id ? { ...g, current_amount: newAmount } : g));
+                                setFinancialGoals(prev => prev.map(g => g.id === goal.id ? { ...g, current_amount: newAmount } : g));
                                 e.target.value = '';
                               }
                             }}
@@ -5483,11 +5483,11 @@ export default function MomentumApp() {
                       };
                       if (editingGoal) {
                         await db.personalGoals.update(editingGoal.id, data);
-                        setPersonalGoals(prev => prev.map(g => g.id === editingGoal.id ? { ...g, ...data } : g));
+                        setFinancialGoals(prev => prev.map(g => g.id === editingGoal.id ? { ...g, ...data } : g));
                       } else {
                         data.created_at = new Date().toISOString();
                         const { data: result } = await db.personalGoals.create(data);
-                        if (result?.[0]) setPersonalGoals(prev => [result[0], ...prev]);
+                        if (result?.[0]) setFinancialGoals(prev => [result[0], ...prev]);
                       }
                       setShowAddGoal(false);
                       setEditingGoal(null);
