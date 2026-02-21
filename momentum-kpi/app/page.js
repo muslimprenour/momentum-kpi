@@ -1403,6 +1403,11 @@ export default function MomentumApp() {
   const today = getTodayInOrgTimezone();
 
   const getGoals = () => organization?.kpi_goals ? { ...DEFAULT_KPI_GOALS, ...organization.kpi_goals } : DEFAULT_KPI_GOALS;
+  // Owner's personal net goal lives in org kpi_goals, members' lives on user record
+  const getMyYearlyNetGoal = () => {
+    if (currentUser?.role === 'owner') return getGoals().yearly_personal_net_goal || currentUser?.yearly_net_goal || 0;
+    return currentUser?.yearly_net_goal || 0;
+  };
 
   const getMotivation = () => {
     const h = getCurrentHourInOrgTimezone();
@@ -3701,7 +3706,7 @@ export default function MomentumApp() {
               }, 0);
               
               const revenueGoal = goals.yearly_revenue_goal || 500000;
-              const netGoal = currentUser?.yearly_net_goal || goals.yearly_personal_net_goal || 250000;
+              const netGoal = getMyYearlyNetGoal() || 250000;
               const companyNet = totalRevenue - totalAgentCommissions - totalDispoPaid - totalAttorneyFees - totalMiscFees;
               const revenuePct = Math.min((companyNet / revenueGoal) * 100, 100);
               const netPct = Math.min((totalPersonalNet / netGoal) * 100, 100);
@@ -5198,10 +5203,10 @@ export default function MomentumApp() {
                   {currentUser?.role === 'owner' ? (
                     <>
                       <label className="text-slate-400 text-sm mb-1.5 block">Personal Net Income Goal</label>
-                      <p className="text-3xl font-bold text-white">${(currentUser?.yearly_net_goal || 0).toLocaleString()}</p>
+                      <p className="text-3xl font-bold text-white">${getMyYearlyNetGoal().toLocaleString()}</p>
                       <p className="text-slate-600 text-xs mt-1.5">
-                        {currentUser?.yearly_net_goal
-                          ? `$${Math.round(currentUser.yearly_net_goal / 12).toLocaleString()}/mo • Set in Admin tab`
+                        {getMyYearlyNetGoal() > 0
+                          ? `$${Math.round(getMyYearlyNetGoal() / 12).toLocaleString()}/mo • Set in Admin tab`
                           : 'Set your personal goal in the Admin tab'}
                       </p>
                     </>
@@ -5233,7 +5238,7 @@ export default function MomentumApp() {
                   )}
                 </div>
                 <div className="flex items-center">
-                  {currentUser?.yearly_net_goal ? (
+                  {getMyYearlyNetGoal() > 0 ? (
                     <div className="w-full bg-slate-700/50 rounded-xl p-4">
                       <div className="flex justify-between items-end mb-2">
                         <span className="text-slate-400 text-sm">Progress</span>
@@ -5241,13 +5246,13 @@ export default function MomentumApp() {
                           {(() => {
                             const year = new Date().getFullYear();
                             const myNet = calcMyNetForYear(year);
-                            const pct = Math.min((myNet / currentUser.yearly_net_goal) * 100, 100);
+                            const pct = Math.min((myNet / getMyYearlyNetGoal()) * 100, 100);
                             return `${Math.round(pct)}%`;
                           })()}
                         </span>
                       </div>
                       <div className="h-3 bg-slate-800 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-green-500 transition-all" style={{ width: `${Math.min((calcMyNetForYear(new Date().getFullYear()) / currentUser.yearly_net_goal) * 100, 100)}%` }} />
+                        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-green-500 transition-all" style={{ width: `${Math.min((calcMyNetForYear(new Date().getFullYear()) / getMyYearlyNetGoal()) * 100, 100)}%` }} />
                       </div>
                     </div>
                   ) : (
@@ -5267,7 +5272,7 @@ export default function MomentumApp() {
               
               // Goals: company monthly = company yearly / 12, personal = personal yearly / 12
               const companyYearlyGoal = getGoals().yearly_revenue_goal || 2000000;
-              const personalYearlyGoal = parseFloat(currentUser?.yearly_net_goal || 0);
+              const personalYearlyGoal = getMyYearlyNetGoal();
               const companyMonthlyGoal = Math.round(companyYearlyGoal / 12);
               const personalMonthlyGoal = currentUser?.monthly_goals?.personal || (personalYearlyGoal ? Math.round(personalYearlyGoal / 12) : 0);
               
