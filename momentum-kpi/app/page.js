@@ -2360,9 +2360,9 @@ export default function MomentumApp() {
           
           {/* Desktop Tabs */}
           <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-            {['personal', 'team', 'analytics', 'deals', 'history', 'notes'].map(tab => (
+            {['personal', 'team', 'analytics', 'deals', 'goals', 'history', 'notes'].map(tab => (
               <button key={tab} onClick={() => setCurrentTab(tab)} className={`px-3 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm ${currentTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
-                {tab === 'notes' ? '📝 Notes' : tab === 'deals' ? '💰 Deals' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'notes' ? '📝 Notes' : tab === 'deals' ? '💰 Deals' : tab === 'goals' ? '🎯 Goals' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
             {currentUser?.role === 'owner' && (
@@ -2387,7 +2387,7 @@ export default function MomentumApp() {
                 onClick={() => {
                   if (tab.id === 'more') {
                     // Cycle through: notes → history → admin → vip
-                    const moreTabs = ['notes', 'history', ...(currentUser?.role === 'owner' ? ['admin'] : []), 'vip'];
+                    const moreTabs = ['notes', 'history', ...(currentUser?.role === 'owner' ? ['admin'] : [])];
                     const curIdx = moreTabs.indexOf(currentTab);
                     if (curIdx >= 0) {
                       const nextIdx = (curIdx + 1) % moreTabs.length;
@@ -2400,13 +2400,13 @@ export default function MomentumApp() {
                   }
                 }}
                 className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
-                  (tab.id === currentTab || (tab.id === 'more' && ['history', 'admin', 'notes', 'vip'].includes(currentTab)))
+                  (tab.id === currentTab || (tab.id === 'more' && ['history', 'admin', 'notes'].includes(currentTab)))
                     ? 'text-blue-400'
                     : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
-                <span className="text-xl">{tab.id === 'more' && ['notes','history','admin','vip'].includes(currentTab) ? {notes:'📝',history:'📜',admin:'⚙️',vip:'⭐'}[currentTab] || tab.icon : tab.icon}</span>
-                <span className="text-[10px] font-medium mt-0.5">{tab.id === 'more' && ['notes','history','admin','vip'].includes(currentTab) ? {notes:'Notes',history:'History',admin:'Admin',vip:'VIP'}[currentTab] : tab.label}</span>
+                <span className="text-xl">{tab.id === 'more' && ['notes','history','admin'].includes(currentTab) ? {notes:'📝',history:'📜',admin:'⚙️'}[currentTab] || tab.icon : tab.icon}</span>
+                <span className="text-[10px] font-medium mt-0.5">{tab.id === 'more' && ['notes','history','admin'].includes(currentTab) ? {notes:'Notes',history:'History',admin:'Admin'}[currentTab] : tab.label}</span>
               </button>
             ))}
           </div>
