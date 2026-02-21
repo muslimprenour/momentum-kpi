@@ -2065,9 +2065,37 @@ export default function MomentumApp() {
       const s = getStats(user.id, period);
       const regularOffers = s.offers - (s.off_market || 0);
       const offMarketOffers = s.off_market || 0;
-      const score = (regularOffers * 1) + (offMarketOffers * 10) + (s.texts * 0.10) + (s.calls * 1) + (s.contracts * 200) + (s.closed * 400);
-      return { user, stats: s, score: Math.round(score) };
+      // UC count from live pipeline instead of manual KPI
+      const ucCount = getPipelineCount(user.id, 'under_contract');
+      const closingCount = getPipelineCount(user.id, 'closing');
+      const liveUC = ucCount + closingCount;
+      const score = (regularOffers * 1) + (offMarketOffers * 10) + (s.texts * 0.10) + (s.calls * 1) + (liveUC * 200) + (s.closed * 400);
+      return { user, stats: { ...s, liveUC, ucCount, closingCount }, score: Math.round(score) };
     }).sort((a, b) => b.score - a.score);
+  };
+
+  // Pipeline-based UC counts (replaces manual KPI tracking)
+  const getPipelineCount = (userId, stage) => {
+    if (currentUser?.role === 'owner') {
+      if (stage === 'all') return pipelineDeals.filter(d => d.sourced_by_user_id === userId || d.user_id === userId).length;
+      return pipelineDeals.filter(d => d.stage === stage && (d.sourced_by_user_id === userId || d.user_id === userId)).length;
+    }
+    if (stage === 'all') return pipelineDeals.filter(d => d.user_id === userId).length;
+    return pipelineDeals.filter(d => d.stage === stage && d.user_id === userId).length;
+  };
+
+  const getMyPipelineCounts = () => {
+    const myId = currentUser?.id;
+    const isOwner = currentUser?.role === 'owner';
+    const myDeals = isOwner ? pipelineDeals : pipelineDeals.filter(d => d.user_id === myId || d.sourced_by_user_id === myId);
+    return {
+      lead: myDeals.filter(d => d.stage === 'lead').length,
+      offer_sent: myDeals.filter(d => d.stage === 'offer_sent').length,
+      under_contract: myDeals.filter(d => d.stage === 'under_contract').length,
+      closing: myDeals.filter(d => d.stage === 'closing').length,
+      total: myDeals.length,
+      uc_total: myDeals.filter(d => d.stage === 'under_contract' || d.stage === 'closing').length
+    };
   };
 
   // Metric visibility helpers
@@ -2518,13 +2546,18 @@ export default function MomentumApp() {
             })()}
 
             {/* Activity Feed Widget */}
-            {activityFeed.length > 0 && (
-              <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700">
-                <h3 className="text-white font-bold mb-3 flex items-center gap-2">
-                  <span>⚡</span> Team Activity
-                </h3>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {activityFeed.slice(0, 15).map((a, i) => {
+            <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700">
+              <h3 className="text-white font-bold mb-3 flex items-center gap-2">
+                <span>⚡</span> Team Activity
+              </h3>
+              {activityFeed.length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-slate-500 text-sm">No activity yet today</p>
+                  <p className="text-slate-600 text-xs mt-1">Start submitting offers and deals to see the feed light up!</p>
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                  {activityFeed.slice(0, 20).map((a, i) => {
                     const member = teamMembers.find(m => m.id === a.user_id);
                     const timeAgo = (() => {
                       const mins = Math.floor((new Date() - new Date(a.created_at)) / 60000);
@@ -2537,18 +2570,18 @@ export default function MomentumApp() {
                     })();
                     const iconMap = { kpi: '📊', deal_closed: '🎉', pipeline_move: '📋', vip_added: '🤝', vip_followup: '📞' };
                     return (
-                      <div key={a.id || i} className="flex items-start gap-2 py-1.5 border-b border-slate-700/30 last:border-0">
-                        <span className="text-sm mt-0.5">{iconMap[a.activity_type] || '📌'}</span>
+                      <div key={a.id || i} className="flex items-start gap-2.5 py-2 border-b border-slate-700/30 last:border-0">
+                        <span className="text-base mt-0.5">{iconMap[a.activity_type] || '📌'}</span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-slate-300 text-xs leading-relaxed">{a.description}</p>
+                          <p className="text-slate-300 text-sm leading-relaxed">{a.description}</p>
                         </div>
-                        <span className="text-slate-600 text-[10px] whitespace-nowrap mt-0.5">{timeAgo}</span>
+                        <span className="text-slate-600 text-xs whitespace-nowrap mt-0.5">{timeAgo}</span>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Combined Revenue/Net Widget - Only shown if user has enabled it */}
             {showRevenueOnHome && (() => {
@@ -2747,19 +2780,31 @@ export default function MomentumApp() {
             {(myMetricVisible('deals_uc') || myMetricVisible('deals_closed')) && (
             <div className="grid grid-cols-2 gap-3 md:gap-4">
               {myMetricVisible('deals_uc') && (
-              <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700">
+              <div className="bg-slate-800/80 backdrop-blur rounded-2xl md:rounded-xl p-4 border border-slate-700/50 md:border-slate-700 cursor-pointer hover:border-purple-500/30 transition"
+                onClick={() => { setCurrentTab('deals'); setDealsView('pipeline'); }}>
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
                     <span className="text-base">📋</span>
                   </div>
-                  <p className="text-slate-400 text-xs uppercase tracking-wide">Under Contract</p>
+                  <p className="text-slate-400 text-xs uppercase tracking-wide">Pipeline</p>
                 </div>
-                <p className="text-3xl md:text-3xl font-black text-purple-400">{weeklyStats.contracts}<span className="text-base text-slate-500 font-normal">/{goals.weekly_contracts}</span></p>
-                <p className="text-[10px] text-slate-500 mb-3">Weekly Goal</p>
-                <div className="flex gap-2">
-                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) - 1)} className="flex-1 bg-slate-700/80 text-white py-3 rounded-xl md:rounded-lg font-semibold active:scale-95 transition-all">−1</button>
-                  <button onClick={() => updateKPI('deals_under_contract', (myKPI.deals_under_contract || 0) + 1)} className="flex-1 bg-purple-600 text-white py-3 rounded-xl md:rounded-lg font-semibold active:scale-95 transition-all">+1</button>
-                </div>
+                {(() => {
+                  const counts = getMyPipelineCounts();
+                  return (
+                    <>
+                      <p className="text-3xl md:text-3xl font-black text-purple-400">{counts.uc_total}<span className="text-base text-slate-500 font-normal"> UC</span></p>
+                      <div className="flex gap-2 mt-2">
+                        <span className="text-xs bg-blue-500/10 text-blue-400 px-2 py-1 rounded-lg">🎯 {counts.lead} Leads</span>
+                        <span className="text-xs bg-purple-500/10 text-purple-400 px-2 py-1 rounded-lg">📨 {counts.offer_sent} Sent</span>
+                      </div>
+                      <div className="flex gap-2 mt-1.5">
+                        <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-1 rounded-lg">📝 {counts.under_contract} UC</span>
+                        <span className="text-xs bg-green-500/10 text-green-400 px-2 py-1 rounded-lg">🏁 {counts.closing} Closing</span>
+                      </div>
+                      <p className="text-[10px] text-slate-600 mt-2">Tap to view pipeline →</p>
+                    </>
+                  );
+                })()}
               </div>
               )}
               {myMetricVisible('deals_closed') && (
@@ -2878,7 +2923,7 @@ export default function MomentumApp() {
                             <span className="text-orange-400 text-xs font-medium">🔥{memberStreak.current}</span>
                           )}
                         </div>
-                        <p className="text-slate-400 text-xs">Offers: {e.stats.offers}{e.stats.off_market > 0 && <span className="text-purple-400"> ({e.stats.off_market} off-mkt)</span>} | Texts: {e.stats.texts} | Calls: {e.stats.calls}</p>
+                        <p className="text-slate-400 text-xs">Offers: {e.stats.offers}{e.stats.off_market > 0 && <span className="text-purple-400"> ({e.stats.off_market} off-mkt)</span>} | Texts: {e.stats.texts} | Calls: {e.stats.calls}{e.stats.liveUC > 0 && <span className="text-amber-400"> | 📝 {e.stats.liveUC} UC</span>}</p>
                       </div>
                       <div className="hidden sm:block">
                         <Sparkline data={memberOffersTrend} color="#eab308" width={60} height={24} />
@@ -2907,7 +2952,9 @@ export default function MomentumApp() {
                   const teamSize = teamMembers.length || 1;
                   const goalMultipliers = { daily: [1, 1, 1, 1, 1], weekly: [7, 7, 7, 1, 1], monthly: [30, 30, 30, 4, 1], quarterly: [90, 90, 90, 12, 3] }[analyticsPeriod];
                   const teamGoals = [goals.daily_offers * teamSize * goalMultipliers[0], (goals.daily_new_agents + goals.daily_follow_ups) * teamSize * goalMultipliers[1], goals.daily_calls * teamSize * goalMultipliers[2], goals.weekly_contracts * teamSize * goalMultipliers[3], goals.monthly_closed * teamSize * goalMultipliers[4]];
-                  return [['Offers', t.offers, teamGoals[0]], ['Texts', t.texts, teamGoals[1]], ['Calls', t.calls, teamGoals[2]], ['UC', t.contracts, teamGoals[3]], ['Closed', t.closed, teamGoals[4]]].map(([n, v, g]) => (
+                  // Use live pipeline UC count instead of manual KPI
+                  const liveUC = pipelineDeals.filter(d => d.stage === 'under_contract' || d.stage === 'closing').length;
+                  return [['Offers', t.offers, teamGoals[0]], ['Texts', t.texts, teamGoals[1]], ['Calls', t.calls, teamGoals[2]], ['UC', liveUC, teamGoals[3]], ['Closed', t.closed, teamGoals[4]]].map(([n, v, g]) => (
                     <div key={n} className="bg-slate-700 rounded-lg p-2 sm:p-3 text-center">
                       <p className="text-slate-400 text-xs">{n}</p>
                       <p className="text-lg sm:text-2xl font-bold text-white">{v}</p>
@@ -5076,9 +5123,67 @@ export default function MomentumApp() {
         {currentTab === 'goals' && (
           <div className="space-y-4">
             {/* Goals Tab Header */}
-            <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/20 rounded-2xl md:rounded-xl p-4 border border-blue-500/20">
+            <div className="bg-gradient-to-r from-blue-900/30 to-indigo-900/20 rounded-2xl md:rounded-xl p-5 border border-blue-500/20">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">🎯 Goals & Finances</h2>
               <p className="text-slate-400 text-sm mt-1">Track revenue, estimate taxes, and crush your personal goals</p>
+            </div>
+
+            {/* My Yearly Target - visible to everyone */}
+            <div className="bg-slate-800/80 rounded-2xl md:rounded-xl p-5 border border-slate-700/50">
+              <h3 className="text-white text-lg font-bold mb-3">💰 My Yearly Target</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-slate-400 text-sm mb-1.5 block">Personal Net Income Goal ($)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={currentUser?.yearly_net_goal || ''}
+                      onChange={async (e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        await db.users.update(currentUser.id, { yearly_net_goal: val || null });
+                        const updated = { ...currentUser, yearly_net_goal: val || null };
+                        setCurrentUser(updated);
+                        localStorage.setItem('momentum_user', JSON.stringify(updated));
+                        setProfileForm(prev => ({ ...prev, yearly_net_goal: e.target.value }));
+                      }}
+                      className="flex-1 bg-slate-700 text-white px-4 py-3 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none text-lg"
+                      placeholder="e.g. 500000"
+                    />
+                  </div>
+                  <p className="text-slate-600 text-xs mt-1.5">
+                    {currentUser?.yearly_net_goal
+                      ? `That's $${Math.round(currentUser.yearly_net_goal / 12).toLocaleString()}/mo`
+                      : 'How much do you want to take home this year?'}
+                  </p>
+                </div>
+                <div className="flex items-center">
+                  {currentUser?.yearly_net_goal ? (
+                    <div className="w-full bg-slate-700/50 rounded-xl p-4">
+                      <div className="flex justify-between items-end mb-2">
+                        <span className="text-slate-400 text-sm">Progress</span>
+                        <span className="text-white font-bold text-lg">
+                          {(() => {
+                            const year = new Date().getFullYear();
+                            const myNet = deals.filter(d => {
+                              const dd = new Date(d.closed_date);
+                              return dd.getFullYear() === year && (d.user_id === currentUser?.id || d.split_with_user_id === currentUser?.id || currentUser?.role === 'owner');
+                            }).reduce((sum, d) => sum + parseFloat(d.revenue || d.commission_amount || 0), 0);
+                            const pct = Math.min((myNet / currentUser.yearly_net_goal) * 100, 100);
+                            return `${Math.round(pct)}%`;
+                          })()}
+                        </span>
+                      </div>
+                      <div className="h-3 bg-slate-800 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-green-500 transition-all" style={{ width: `${Math.min((deals.filter(d => new Date(d.closed_date).getFullYear() === new Date().getFullYear() && (d.user_id === currentUser?.id || d.split_with_user_id === currentUser?.id || currentUser?.role === 'owner')).reduce((s, d) => s + parseFloat(d.revenue || d.commission_amount || 0), 0) / currentUser.yearly_net_goal) * 100, 100)}%` }} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center w-full py-2">
+                      <p className="text-slate-600 text-sm">Set your goal to see progress tracking</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* ===== MONTHLY REVENUE CALENDAR ===== */}
@@ -5086,67 +5191,146 @@ export default function MomentumApp() {
               const year = new Date().getFullYear();
               const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
               const currentMonth = new Date().getMonth();
-              const monthlyGoal = currentUser?.monthly_goals?.revenue || Math.round((currentUser?.yearly_net_goal || (getGoals().yearly_revenue_goal / (teamMembers.length || 1))) / 12);
               
-              // Get revenue per month from deals
-              const myDeals = deals.filter(d => {
-                if (currentUser?.role === 'owner') return true;
-                return d.user_id === currentUser?.id || d.split_with_user_id === currentUser?.id;
-              });
+              // Goals: company monthly = company yearly / 12, personal = personal yearly / 12
+              const companyYearlyGoal = getGoals().yearly_revenue_goal || 2000000;
+              const personalYearlyGoal = parseFloat(currentUser?.yearly_net_goal || 0);
+              const companyMonthlyGoal = currentUser?.monthly_goals?.company || Math.round(companyYearlyGoal / 12);
+              const personalMonthlyGoal = currentUser?.monthly_goals?.personal || (personalYearlyGoal ? Math.round(personalYearlyGoal / 12) : 0);
               
-              const monthRevenue = months.map((_, idx) => {
-                return myDeals
-                  .filter(d => {
-                    const dd = new Date(d.closed_date);
-                    return dd.getFullYear() === year && dd.getMonth() === idx;
-                  })
-                  .reduce((sum, d) => sum + (parseFloat(d.revenue || d.commission_amount || 0)), 0);
+              // All deals for company revenue
+              const allOrgDeals = deals.filter(d => new Date(d.closed_date).getFullYear() === year);
+              
+              // Calculate per-month: company gross revenue + personal net
+              const monthData = months.map((_, idx) => {
+                const monthDeals = allOrgDeals.filter(d => new Date(d.closed_date).getMonth() === idx);
+                const companyRev = monthDeals.reduce((sum, d) => sum + (parseFloat(d.revenue || d.commission_amount || 0)), 0);
+                
+                // Personal net: only deals where current user is involved
+                let personalNet = 0;
+                monthDeals.forEach(d => {
+                  const rev = parseFloat(d.revenue || d.commission_amount || 0);
+                  const isOwner = currentUser?.role === 'owner';
+                  const isMyDeal = d.user_id === currentUser?.id;
+                  const isPartner = d.split_with_user_id === currentUser?.id;
+                  
+                  if (isMyDeal || isOwner) {
+                    // Calculate net after deductions
+                    let realtorComm = 0;
+                    if (d.realtor_commission_paid) {
+                      realtorComm = d.realtor_commission_type === 'fixed' ? parseFloat(d.realtor_commission_amount || 0) : parseFloat(d.uc_price || 0) * parseFloat(d.realtor_commission_percentage || 0) / 100;
+                    }
+                    const miscTotal = (d.misc_fees || []).reduce((s, f) => s + (parseFloat(f.amount) || 0), 0);
+                    const attFee = d.attorney_used ? parseFloat(d.attorney_fee || 0) : 0;
+                    const afterMisc = rev - realtorComm - miscTotal;
+                    const dispoBase = d.attorney_fee_split ? (afterMisc - attFee) : afterMisc;
+                    let dispoShare = 0;
+                    if (d.dispo_help) {
+                      dispoShare = d.dispo_share_type === 'fixed' ? parseFloat(d.dispo_share_amount || 0) : dispoBase * parseFloat(d.dispo_share_percentage || 0) / 100;
+                    }
+                    const netBeforeSplit = afterMisc - attFee - dispoShare;
+                    let partnerShare = 0;
+                    if (d.split_with_user_id) {
+                      partnerShare = d.split_type === 'fixed' ? parseFloat(d.split_amount || 0) : netBeforeSplit * (100 - parseFloat(d.split_percentage || 50)) / 100;
+                    }
+                    personalNet += rev - realtorComm - miscTotal - attFee - dispoShare - partnerShare;
+                  } else if (isPartner) {
+                    // Partner gets their split
+                    const netBeforeSplit = rev; // Simplified - partner just gets their cut
+                    if (d.split_type === 'fixed') personalNet += parseFloat(d.split_amount || 0);
+                    else personalNet += netBeforeSplit * (100 - parseFloat(d.split_percentage || 50)) / 100;
+                  }
+                });
+                
+                return { companyRev, personalNet };
               });
 
-              const yearTotal = monthRevenue.reduce((s, v) => s + v, 0);
+              const ytdCompany = monthData.reduce((s, m) => s + m.companyRev, 0);
+              const ytdPersonal = monthData.reduce((s, m) => s + m.personalNet, 0);
               
               return (
-                <div className="bg-slate-800/80 rounded-2xl md:rounded-xl p-4 border border-slate-700/50">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-white font-bold flex items-center gap-2"><span>📅</span> {year} Monthly Revenue</h3>
-                    <div className="text-right">
-                      <p className="text-green-400 font-bold text-lg">${(yearTotal/1000).toFixed(0)}k</p>
-                      <p className="text-slate-500 text-[10px]">YTD Total</p>
+                <div className="bg-slate-800/80 rounded-2xl md:rounded-xl p-5 border border-slate-700/50">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-white text-lg font-bold flex items-center gap-2"><span>📅</span> {year} Monthly Breakdown</h3>
+                    <div className="flex gap-4 text-right">
+                      <div>
+                        <p className="text-green-400 font-bold text-xl">${ytdCompany >= 1000 ? `${(ytdCompany/1000).toFixed(0)}k` : ytdCompany.toFixed(0)}</p>
+                        <p className="text-slate-500 text-xs">Company Rev</p>
+                      </div>
+                      <div>
+                        <p className="text-blue-400 font-bold text-xl">${ytdPersonal >= 1000 ? `${(ytdPersonal/1000).toFixed(0)}k` : ytdPersonal.toFixed(0)}</p>
+                        <p className="text-slate-500 text-xs">My Net</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
                     {months.map((m, idx) => {
-                      const rev = monthRevenue[idx];
-                      const pct = monthlyGoal > 0 ? Math.min((rev / monthlyGoal) * 100, 100) : 0;
+                      const { companyRev, personalNet } = monthData[idx];
+                      const compPct = companyMonthlyGoal > 0 ? Math.min((companyRev / companyMonthlyGoal) * 100, 100) : 0;
+                      const persPct = personalMonthlyGoal > 0 ? Math.min((personalNet / personalMonthlyGoal) * 100, 100) : 0;
                       const isCurrent = idx === currentMonth;
                       const isFuture = idx > currentMonth;
                       return (
-                        <div key={m} className={`rounded-lg p-2 border ${isCurrent ? 'border-blue-500/50 bg-blue-500/10' : isFuture ? 'border-slate-700/30 bg-slate-800/30' : 'border-slate-700/50 bg-slate-800/50'}`}>
-                          <p className={`text-[10px] font-semibold ${isCurrent ? 'text-blue-400' : 'text-slate-500'}`}>{m}</p>
-                          <p className={`text-sm font-bold ${rev > 0 ? 'text-white' : 'text-slate-700'}`}>${rev >= 1000 ? `${(rev/1000).toFixed(0)}k` : rev.toFixed(0)}</p>
-                          <div className="h-1 bg-slate-700 rounded-full mt-1 overflow-hidden">
-                            <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-green-500' : pct >= 50 ? 'bg-blue-500' : 'bg-slate-500'}`} style={{ width: `${pct}%` }} />
+                        <div key={m} className={`rounded-xl p-3 border ${isCurrent ? 'border-blue-500/50 bg-blue-500/10' : isFuture ? 'border-slate-700/30 bg-slate-800/30 opacity-50' : 'border-slate-700/50 bg-slate-800/50'}`}>
+                          <p className={`text-xs font-bold mb-1.5 ${isCurrent ? 'text-blue-400' : 'text-slate-400'}`}>{m}</p>
+                          {/* Company Revenue */}
+                          <div className="mb-2">
+                            <p className={`text-base font-bold ${companyRev > 0 ? 'text-green-400' : 'text-slate-700'}`}>
+                              ${companyRev >= 1000 ? `${(companyRev/1000).toFixed(0)}k` : companyRev.toFixed(0)}
+                            </p>
+                            <div className="h-1.5 bg-slate-700 rounded-full mt-1 overflow-hidden">
+                              <div className={`h-full rounded-full transition-all ${compPct >= 100 ? 'bg-green-500' : compPct >= 50 ? 'bg-green-600/70' : 'bg-slate-600'}`} style={{ width: `${compPct}%` }} />
+                            </div>
+                            <p className="text-[10px] text-slate-600 mt-0.5">Rev {Math.round(compPct)}%</p>
                           </div>
-                          {monthlyGoal > 0 && <p className="text-[8px] text-slate-600 mt-0.5">{Math.round(pct)}% of ${(monthlyGoal/1000).toFixed(0)}k</p>}
+                          {/* Personal Net */}
+                          <div>
+                            <p className={`text-sm font-semibold ${personalNet > 0 ? 'text-blue-400' : 'text-slate-700'}`}>
+                              ${personalNet >= 1000 ? `${(personalNet/1000).toFixed(0)}k` : personalNet.toFixed(0)}
+                            </p>
+                            <div className="h-1.5 bg-slate-700 rounded-full mt-1 overflow-hidden">
+                              <div className={`h-full rounded-full transition-all ${persPct >= 100 ? 'bg-blue-500' : persPct >= 50 ? 'bg-blue-600/70' : 'bg-slate-600'}`} style={{ width: `${persPct}%` }} />
+                            </div>
+                            <p className="text-[10px] text-slate-600 mt-0.5">Net {Math.round(persPct)}%</p>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
-                  <div className="mt-3 pt-3 border-t border-slate-700/50 flex items-center gap-3">
-                    <label className="text-slate-400 text-xs">Monthly Target: $</label>
-                    <input
-                      type="number"
-                      value={currentUser?.monthly_goals?.revenue || ''}
-                      onChange={async (e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        const updatedGoals = { ...(currentUser?.monthly_goals || {}), revenue: val };
-                        await db.users.update(currentUser.id, { monthly_goals: updatedGoals });
-                        setCurrentUser(prev => ({ ...prev, monthly_goals: updatedGoals }));
-                        localStorage.setItem('momentum_user', JSON.stringify({ ...currentUser, monthly_goals: updatedGoals }));
-                      }}
-                      className="bg-slate-700 text-white px-3 py-1.5 rounded-lg border border-slate-600 text-sm w-32"
-                      placeholder="Auto from yearly"
-                    />
+                  {/* Monthly goal overrides */}
+                  <div className="mt-4 pt-4 border-t border-slate-700/50 grid grid-cols-2 gap-4">
+                    <div className="flex items-center gap-2">
+                      <label className="text-slate-400 text-sm whitespace-nowrap">Company /mo: $</label>
+                      <input
+                        type="number"
+                        value={currentUser?.monthly_goals?.company || ''}
+                        onChange={async (e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          const updatedGoals = { ...(currentUser?.monthly_goals || {}), company: val };
+                          await db.users.update(currentUser.id, { monthly_goals: updatedGoals });
+                          setCurrentUser(prev => ({ ...prev, monthly_goals: updatedGoals }));
+                          localStorage.setItem('momentum_user', JSON.stringify({ ...currentUser, monthly_goals: updatedGoals }));
+                        }}
+                        className="bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 text-sm flex-1"
+                        placeholder={`${(companyYearlyGoal/12/1000).toFixed(0)}k auto`}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-slate-400 text-sm whitespace-nowrap">My Net /mo: $</label>
+                      <input
+                        type="number"
+                        value={currentUser?.monthly_goals?.personal || ''}
+                        onChange={async (e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          const updatedGoals = { ...(currentUser?.monthly_goals || {}), personal: val };
+                          await db.users.update(currentUser.id, { monthly_goals: updatedGoals });
+                          setCurrentUser(prev => ({ ...prev, monthly_goals: updatedGoals }));
+                          localStorage.setItem('momentum_user', JSON.stringify({ ...currentUser, monthly_goals: updatedGoals }));
+                        }}
+                        className="bg-slate-700 text-white px-3 py-2 rounded-lg border border-slate-600 text-sm flex-1"
+                        placeholder={personalYearlyGoal ? `${(personalYearlyGoal/12/1000).toFixed(0)}k auto` : 'Set yearly first'}
+                      />
+                    </div>
                   </div>
                 </div>
               );
@@ -5197,63 +5381,63 @@ export default function MomentumApp() {
               });
               
               return (
-                <div className="bg-slate-800/80 rounded-2xl md:rounded-xl p-4 border border-slate-700/50">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-white font-bold flex items-center gap-2"><span>🧾</span> Tax Estimator</h3>
+                <div className="bg-slate-800/80 rounded-2xl md:rounded-xl p-5 border border-slate-700/50">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-white text-lg font-bold flex items-center gap-2"><span>🧾</span> Tax Estimator</h3>
                     <button onClick={() => {
                       const ts = currentUser?.tax_settings || {};
                       setTaxForm({ filing_status: ts.filing_status || 'single', estimated_annual: ts.estimated_annual || '', has_other_income: ts.has_other_income || false, other_income: ts.other_income || '', deductions: ts.deductions || 'standard' });
                       setShowTaxSetup(true);
-                    }} className="text-xs px-3 py-1 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600">
+                    }} className="text-sm px-4 py-1.5 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600">
                       {hasTaxSetup ? '⚙️ Update' : '⚙️ Setup'}
                     </button>
                   </div>
                   
-                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 mb-3">
-                    <p className="text-amber-400 text-[10px]">⚠️ Estimates only — consult your accountant. As a 1099 independent contractor, you must file quarterly estimated taxes.</p>
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-2.5 mb-4">
+                    <p className="text-amber-400 text-xs">⚠️ Estimates only — consult your accountant. As a 1099 independent contractor, you must file quarterly estimated taxes.</p>
                   </div>
 
                   {/* Summary */}
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    <div className="bg-slate-700/50 rounded-lg p-2.5 text-center">
-                      <p className="text-slate-400 text-[10px]">YTD Earned</p>
-                      <p className="text-white font-bold text-lg">${(totalEarned/1000).toFixed(1)}k</p>
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="bg-slate-700/50 rounded-xl p-4 text-center">
+                      <p className="text-slate-400 text-xs mb-1">YTD Earned</p>
+                      <p className="text-white font-bold text-2xl">${(totalEarned/1000).toFixed(1)}k</p>
                     </div>
-                    <div className="bg-red-500/10 rounded-lg p-2.5 text-center border border-red-500/10">
-                      <p className="text-slate-400 text-[10px]">Est. Tax Owed</p>
-                      <p className="text-red-400 font-bold text-lg">${(taxOwed/1000).toFixed(1)}k</p>
+                    <div className="bg-red-500/10 rounded-xl p-4 text-center border border-red-500/10">
+                      <p className="text-slate-400 text-xs mb-1">Est. Tax Owed</p>
+                      <p className="text-red-400 font-bold text-2xl">${(taxOwed/1000).toFixed(1)}k</p>
                     </div>
-                    <div className="bg-green-500/10 rounded-lg p-2.5 text-center border border-green-500/10">
-                      <p className="text-slate-400 text-[10px]">After Tax</p>
-                      <p className="text-green-400 font-bold text-lg">${((totalEarned - taxOwed)/1000).toFixed(1)}k</p>
+                    <div className="bg-green-500/10 rounded-xl p-4 text-center border border-green-500/10">
+                      <p className="text-slate-400 text-xs mb-1">After Tax</p>
+                      <p className="text-green-400 font-bold text-2xl">${((totalEarned - taxOwed)/1000).toFixed(1)}k</p>
                     </div>
                   </div>
 
                   {/* Rate breakdown */}
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    <div className="bg-slate-700/30 rounded p-2 text-center">
-                      <p className="text-[10px] text-slate-500">Federal</p>
-                      <p className="text-white text-sm font-semibold">{(rates.federal * 100).toFixed(0)}%</p>
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="bg-slate-700/30 rounded-lg p-3 text-center">
+                      <p className="text-xs text-slate-500">Federal</p>
+                      <p className="text-white text-lg font-bold">{(rates.federal * 100).toFixed(0)}%</p>
                     </div>
-                    <div className="bg-slate-700/30 rounded p-2 text-center">
-                      <p className="text-[10px] text-slate-500">NJ State</p>
-                      <p className="text-white text-sm font-semibold">{(rates.state * 100).toFixed(1)}%</p>
+                    <div className="bg-slate-700/30 rounded-lg p-3 text-center">
+                      <p className="text-xs text-slate-500">NJ State</p>
+                      <p className="text-white text-lg font-bold">{(rates.state * 100).toFixed(1)}%</p>
                     </div>
-                    <div className="bg-slate-700/30 rounded p-2 text-center">
-                      <p className="text-[10px] text-slate-500">Self-Emp</p>
-                      <p className="text-white text-sm font-semibold">{(rates.selfEmployment * 100).toFixed(1)}%</p>
+                    <div className="bg-slate-700/30 rounded-lg p-3 text-center">
+                      <p className="text-xs text-slate-500">Self-Emp</p>
+                      <p className="text-white text-lg font-bold">{(rates.selfEmployment * 100).toFixed(1)}%</p>
                     </div>
                   </div>
 
                   {/* Quarterly breakdown */}
-                  <p className="text-slate-400 text-xs font-semibold mb-2">Quarterly Estimates</p>
-                  <div className="space-y-1.5">
+                  <p className="text-slate-400 text-sm font-semibold mb-2">Quarterly Estimates</p>
+                  <div className="space-y-2">
                     {quarters.map((q, i) => {
                       const qTax = q.earned * rates.total;
                       const currentQ = Math.floor(new Date().getMonth() / 3);
                       return (
-                        <div key={q.q} className={`flex items-center gap-3 px-3 py-2 rounded-lg ${i === currentQ ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-slate-700/30'}`}>
-                          <span className={`text-xs font-bold ${i === currentQ ? 'text-blue-400' : 'text-slate-500'}`}>{q.q}</span>
+                        <div key={q.q} className={`flex items-center gap-3 px-4 py-3 rounded-lg ${i === currentQ ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-slate-700/30'}`}>
+                          <span className={`text-sm font-bold ${i === currentQ ? 'text-blue-400' : 'text-slate-500'}`}>{q.q}</span>
                           <div className="flex-1">
                             <p className="text-slate-400 text-[10px]">{q.months} • Due {q.due}</p>
                           </div>
