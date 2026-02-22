@@ -5633,43 +5633,123 @@ export default function MomentumApp() {
                     const buildMap = () => {
                       const L = window.L;
                       if (el._map) { el._map.remove(); }
-                      const map = L.map(el).setView([40.0583, -74.4057], 8); // NJ center
+                      const map = L.map(el).setView([40.0583, -74.4057], 8);
                       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                         attribution: '© OpenStreetMap'
                       }).addTo(map);
                       el._map = map;
-                      // Add pins
+                      el._markers = [];
+
                       const allDeals = [
                         ...pipelineDeals.map(d => ({ ...d, _type: 'pipeline' })),
                         ...allClosedDeals.filter(d => d.latitude && d.longitude).map(d => ({ ...d, _type: 'closed', stage: 'closed' }))
                       ];
+
+                      // Pre-compute agent deal counts across ALL deals
+                      const agentCounts = {};
+                      allDeals.forEach(d => {
+                        if (d.agent_name) {
+                          const key = d.agent_name.trim().toLowerCase();
+                          agentCounts[key] = (agentCounts[key] || 0) + 1;
+                        }
+                      });
+
+                      // Global filter function for popup agent clicks
+                      window._mapFilterAgent = (agentName) => {
+                        const filterKey = agentName.trim().toLowerCase();
+                        el._markers.forEach(m => {
+                          const mAgent = (m._dealAgent || '').trim().toLowerCase();
+                          if (mAgent === filterKey) {
+                            m.setOpacity(1);
+                            if (m._icon) m._icon.style.transform += ' scale(1.3)';
+                          } else {
+                            m.setOpacity(0.15);
+                            if (m._icon) m._icon.style.transform = m._icon.style.transform.replace(' scale(1.3)', '');
+                          }
+                        });
+                        // Fit to filtered
+                        const filtered = el._markers.filter(m => (m._dealAgent || '').trim().toLowerCase() === filterKey);
+                        if (filtered.length > 0) {
+                          const bounds = L.latLngBounds(filtered.map(m => m.getLatLng()));
+                          map.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 });
+                        }
+                        // Show clear banner
+                        if (!el._clearBanner) {
+                          const div = document.createElement('div');
+                          div.style.cssText = 'position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:1000;background:#1e293b;color:white;padding:6px 16px;border-radius:8px;font-size:12px;font-family:sans-serif;display:flex;align-items:center;gap:8px;border:1px solid #334155;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+                          div.innerHTML = '<span>🤝 Showing: <b>' + agentName + '</b> (' + (agentCounts[filterKey] || 0) + ' deals)</span><button style="background:#ef4444;color:white;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;" onclick="window._mapClearFilter()">✕ Clear</button>';
+                          el.style.position = 'relative';
+                          el.appendChild(div);
+                          el._clearBanner = div;
+                        }
+                      };
+                      window._mapClearFilter = () => {
+                        el._markers.forEach(m => {
+                          m.setOpacity(1);
+                          if (m._icon) m._icon.style.transform = m._icon.style.transform.replace(' scale(1.3)', '');
+                        });
+                        if (el._clearBanner) { el._clearBanner.remove(); el._clearBanner = null; }
+                        const withCoords = allDeals.filter(d => d.latitude && d.longitude);
+                        if (withCoords.length > 0) {
+                          map.fitBounds(L.latLngBounds(withCoords.map(d => [d.latitude, d.longitude])), { padding: [30, 30] });
+                        }
+                      };
+
                       allDeals.forEach(d => {
                         if (!d.latitude || !d.longitude) return;
                         const color = d.stage === 'closed' ? '#64748b' : (STAGE_COLORS[d.stage] || '#64748b');
-                        const price = d.revised_uc_price || d.uc_price || d.accepted_price || d.offer_amount || d.sold_price || 0;
                         const icon = L.divIcon({
                           className: '',
-                          html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
+                          html: '<div style="width:14px;height:14px;border-radius:50%;background:' + color + ';border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>',
                           iconSize: [14, 14], iconAnchor: [7, 7]
                         });
                         const marker = L.marker([d.latitude, d.longitude], { icon }).addTo(map);
+                        marker._dealAgent = d.agent_name || '';
+                        el._markers.push(marker);
+
                         const stageLabel = d.stage === 'closed' ? 'Closed' : d.stage === 'offer_accepted' ? 'Offer Accepted' : d.stage === 'under_contract' ? 'Under Contract' : 'Closing';
                         const closedDate = d.closed_date ? new Date(d.closed_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-                        const soldPrice = parseFloat(d.sold_price || 0);
+                        const listPrice = parseFloat(d.original_list_price || d.asking_price || 0);
                         const ucPrice = parseFloat(d.revised_uc_price || d.uc_price || 0);
+                        const soldPrice = parseFloat(d.sold_price || 0);
+                        const buyerName = d.buyer_name || '';
+                        const agentKey = d.agent_name ? d.agent_name.trim().toLowerCase() : '';
+                        const agentDealCount = agentKey ? (agentCounts[agentKey] || 0) : 0;
+                        const escapedAgent = (d.agent_name || '').replace(/'/g, "\\'");
+
+                        // Price flow line: List → UC → Sold
+                        let priceFlow = '';
+                        const fmtK = (v) => v >= 1000 ? '$' + (v/1000).toFixed(0) + 'k' : '$' + v.toLocaleString();
+                        if (listPrice || ucPrice || soldPrice) {
+                          const parts = [];
+                          if (listPrice) parts.push('<span style="color:#94a3b8;">' + fmtK(listPrice) + '</span>');
+                          if (ucPrice) parts.push('<span style="color:#f59e0b;">' + fmtK(ucPrice) + '</span>');
+                          if (soldPrice) parts.push('<span style="color:#22c55e;font-weight:600;">' + fmtK(soldPrice) + '</span>');
+                          priceFlow = '<div style="font-size:12px;margin:4px 0;">' + parts.join(' <span style="color:#475569;">→</span> ') + '</div>';
+                        }
+
                         marker.bindPopup(`
-                          <div style="min-width:200px;font-family:sans-serif;">
-                            <b style="font-size:13px;">${d.property_address}</b><br/>
-                            <span style="display:inline-block;margin:3px 0;padding:2px 6px;border-radius:4px;font-size:10px;background:${color}22;color:${color};font-weight:600;">${stageLabel}</span>
-                            ${closedDate ? `<span style="font-size:10px;color:#94a3b8;margin-left:4px;">${closedDate}</span>` : ''}<br/>
-                            ${ucPrice ? `<span style="font-size:11px;color:#666;">UC: $${ucPrice.toLocaleString()}</span><br/>` : ''}
-                            ${soldPrice ? `<span style="font-size:12px;color:#22c55e;font-weight:600;">Sold: $${soldPrice.toLocaleString()}</span><br/>` : ''}
-                            ${!soldPrice && price ? `<span style="font-size:12px;color:#666;">$${parseFloat(price).toLocaleString()}</span><br/>` : ''}
-                            ${soldPrice && ucPrice ? `<span style="font-size:11px;color:#f59e0b;">Spread: $${(soldPrice - ucPrice).toLocaleString()}</span><br/>` : ''}
-                            ${d.agent_name ? `<span style="font-size:10px;color:#94a3b8;">🤝 ${d.agent_name}</span><br/>` : ''}
-                            ${d.zillow_url ? `<a href="${d.zillow_url}" target="_blank" style="font-size:11px;color:#3b82f6;text-decoration:none;">🔗 View on Zillow →</a>` : ''}
+                          <div style="min-width:240px;max-width:300px;font-family:sans-serif;">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                              <div style="flex:1;min-width:0;">
+                                <b style="font-size:13px;line-height:1.3;display:block;">${d.property_address}</b>
+                                <div style="display:flex;align-items:center;gap:4px;margin:3px 0;">
+                                  <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;background:${color}22;color:${color};font-weight:600;">${stageLabel}</span>
+                                  ${closedDate ? '<span style="font-size:10px;color:#94a3b8;">' + closedDate + '</span>' : ''}
+                                </div>
+                              </div>
+                              ${buyerName ? '<div style="text-align:right;flex-shrink:0;"><span style="font-size:9px;color:#94a3b8;display:block;">BUYER</span><span style="font-size:11px;color:#fb923c;font-weight:600;">' + buyerName + '</span></div>' : ''}
+                            </div>
+                            ${priceFlow}
+                            ${soldPrice && ucPrice ? '<div style="font-size:11px;color:#22c55e;font-weight:600;">💰 Spread: $' + (soldPrice - ucPrice).toLocaleString() + '</div>' : ''}
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding-top:4px;border-top:1px solid #e2e8f022;">
+                              <div>
+                                ${d.agent_name ? '<a href="javascript:void(0)" onclick="window._mapFilterAgent(\\'' + escapedAgent + '\\')" style="font-size:10px;color:#60a5fa;text-decoration:none;cursor:pointer;">🤝 ' + d.agent_name + ' <span style="background:#1e293b;padding:1px 5px;border-radius:4px;font-size:9px;color:#94a3b8;margin-left:2px;">' + agentDealCount + ' deal' + (agentDealCount !== 1 ? 's' : '') + '</span></a>' : ''}
+                              </div>
+                              ${d.zillow_url ? '<a href="' + d.zillow_url + '" target="_blank" style="font-size:10px;color:#3b82f6;text-decoration:none;">Zillow →</a>' : ''}
+                            </div>
                           </div>
-                        `);
+                        `, { maxWidth: 320 });
                       });
                       // Fit bounds if we have pins
                       const withCoords = allDeals.filter(d => d.latitude && d.longitude);
