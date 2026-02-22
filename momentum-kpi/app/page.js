@@ -5715,7 +5715,7 @@ export default function MomentumApp() {
                         const buyerName = d.buyer_name || '';
                         const agentKey = d.agent_name ? d.agent_name.trim().toLowerCase() : '';
                         const agentDealCount = agentKey ? (agentCounts[agentKey] || 0) : 0;
-                        const escapedAgent = (d.agent_name || '').replace(/'/g, "\\'");
+                        const agentId = d.agent_name ? btoa(encodeURIComponent(d.agent_name)) : '';
 
                         // Price flow line: List → UC → Sold
                         let priceFlow = '';
@@ -5744,7 +5744,7 @@ export default function MomentumApp() {
                             ${soldPrice && ucPrice ? '<div style="font-size:11px;color:#22c55e;font-weight:600;">💰 Spread: $' + (soldPrice - ucPrice).toLocaleString() + '</div>' : ''}
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding-top:4px;border-top:1px solid #e2e8f022;">
                               <div>
-                                ${d.agent_name ? '<a href="javascript:void(0)" onclick="window._mapFilterAgent(\\'' + escapedAgent + '\\')" style="font-size:10px;color:#60a5fa;text-decoration:none;cursor:pointer;">🤝 ' + d.agent_name + ' <span style="background:#1e293b;padding:1px 5px;border-radius:4px;font-size:9px;color:#94a3b8;margin-left:2px;">' + agentDealCount + ' deal' + (agentDealCount !== 1 ? 's' : '') + '</span></a>' : ''}
+                                ${d.agent_name ? '<a href="javascript:void(0)" data-agent="' + agentId + '" onclick="window._mapFilterAgent(decodeURIComponent(atob(this.dataset.agent)))" style="font-size:10px;color:#60a5fa;text-decoration:none;cursor:pointer;">🤝 ' + d.agent_name + ' <span style="background:#1e293b;padding:1px 5px;border-radius:4px;font-size:9px;color:#94a3b8;margin-left:2px;">' + agentDealCount + ' deal' + (agentDealCount !== 1 ? 's' : '') + '</span></a>' : ''}
                               </div>
                               ${d.zillow_url ? '<a href="' + d.zillow_url + '" target="_blank" style="font-size:10px;color:#3b82f6;text-decoration:none;">Zillow →</a>' : ''}
                             </div>
