@@ -1305,6 +1305,7 @@ export default function MomentumApp() {
   
   // Deals tracking state
   const [deals, setDeals] = useState([]);
+  const [allClosedDeals, setAllClosedDeals] = useState([]);
   const [pipelineDeals, setPipelineDeals] = useState([]);
   const [dealsYear, setDealsYear] = useState(new Date().getFullYear());
   const [showAddDeal, setShowAddDeal] = useState(false);
@@ -1496,6 +1497,7 @@ export default function MomentumApp() {
       loadActivityFeed();
       loadFinancialGoals();
       loadBuyers();
+      loadAllClosedDeals();
       if (organization.kpi_goals) setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
     }
   }, [currentUser, organization]);
@@ -1548,6 +1550,16 @@ export default function MomentumApp() {
     } catch (e) {
       console.log('Deals table not ready yet');
     }
+  };
+
+  const loadAllClosedDeals = async () => {
+    if (!currentUser || !organization) return;
+    try {
+      const result = currentUser.role === 'owner'
+        ? await db.deals.getByOrg(organization.id)
+        : await db.deals.getByUser(currentUser.id);
+      if (result.data) setAllClosedDeals(result.data);
+    } catch (e) { console.log('All deals load error'); }
   };
 
   const loadPipeline = async () => {
@@ -5553,36 +5565,48 @@ export default function MomentumApp() {
               };
               const allMapDeals = [
                 ...pipelineDeals.map(d => ({ ...d, _type: 'pipeline' })),
-                ...deals.map(d => ({ ...d, _type: 'closed', stage: 'closed' }))
+                ...allClosedDeals.map(d => ({ ...d, _type: 'closed', stage: 'closed' }))
               ].filter(d => d.latitude && d.longitude);
 
               const geocodeAll = async () => {
-                const toGeocode = pipelineDeals.filter(d => !d.latitude && d.property_address);
-                if (toGeocode.length === 0) { alert('All pipeline deals already have coordinates'); return; }
+                const pipelineToGeo = pipelineDeals.filter(d => !d.latitude && d.property_address);
+                const closedToGeo = allClosedDeals.filter(d => !d.latitude && d.property_address);
+                const total = pipelineToGeo.length + closedToGeo.length;
+                if (total === 0) { alert('All deals already have coordinates!'); return; }
+                if (!confirm(`Geocode ${total} deals? (${pipelineToGeo.length} pipeline + ${closedToGeo.length} closed)\nThis may take ~${total} seconds.`)) return;
                 let count = 0;
-                for (const deal of toGeocode) {
+                for (const deal of pipelineToGeo) {
                   const coords = await geocodeAddress(deal.property_address);
                   if (coords) {
                     await db.pipeline.update(deal.id, coords);
                     setPipelineDeals(prev => prev.map(d => d.id === deal.id ? { ...d, ...coords } : d));
                     count++;
                   }
-                  await new Promise(r => setTimeout(r, 1100)); // Nominatim rate limit
+                  await new Promise(r => setTimeout(r, 1100));
                 }
-                alert(`Geocoded ${count}/${toGeocode.length} deals`);
+                for (const deal of closedToGeo) {
+                  const coords = await geocodeAddress(deal.property_address);
+                  if (coords) {
+                    await db.deals.update(deal.id, coords);
+                    setAllClosedDeals(prev => prev.map(d => d.id === deal.id ? { ...d, ...coords } : d));
+                    count++;
+                  }
+                  await new Promise(r => setTimeout(r, 1100));
+                }
+                alert(`Geocoded ${count}/${total} deals`);
               };
 
               return (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block" /> Accepted</span>
-                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> UC</span>
-                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> Closing</span>
-                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-slate-500 inline-block" /> Closed</span>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block" /> Accepted ({pipelineDeals.filter(d => d.stage === 'offer_accepted' && d.latitude).length})</span>
+                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> UC ({pipelineDeals.filter(d => d.stage === 'under_contract' && d.latitude).length})</span>
+                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> Closing ({pipelineDeals.filter(d => d.stage === 'closing' && d.latitude).length})</span>
+                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-slate-500 inline-block" /> Closed ({allClosedDeals.filter(d => d.latitude).length})</span>
                     </div>
                     <button onClick={geocodeAll} className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg">
-                      📍 Geocode All ({pipelineDeals.filter(d => !d.latitude).length} pending)
+                      📍 Geocode All ({pipelineDeals.filter(d => !d.latitude && d.property_address).length + allClosedDeals.filter(d => !d.latitude && d.property_address).length} pending)
                     </button>
                   </div>
                   <div id="deal-map" className="w-full h-[500px] rounded-xl border border-slate-700 bg-slate-800 overflow-hidden" ref={el => {
@@ -5617,7 +5641,7 @@ export default function MomentumApp() {
                       // Add pins
                       const allDeals = [
                         ...pipelineDeals.map(d => ({ ...d, _type: 'pipeline' })),
-                        ...deals.filter(d => d.latitude && d.longitude).map(d => ({ ...d, _type: 'closed', stage: 'closed' }))
+                        ...allClosedDeals.filter(d => d.latitude && d.longitude).map(d => ({ ...d, _type: 'closed', stage: 'closed' }))
                       ];
                       allDeals.forEach(d => {
                         if (!d.latitude || !d.longitude) return;
@@ -5630,12 +5654,20 @@ export default function MomentumApp() {
                         });
                         const marker = L.marker([d.latitude, d.longitude], { icon }).addTo(map);
                         const stageLabel = d.stage === 'closed' ? 'Closed' : d.stage === 'offer_accepted' ? 'Offer Accepted' : d.stage === 'under_contract' ? 'Under Contract' : 'Closing';
+                        const closedDate = d.closed_date ? new Date(d.closed_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+                        const soldPrice = parseFloat(d.sold_price || 0);
+                        const ucPrice = parseFloat(d.revised_uc_price || d.uc_price || 0);
                         marker.bindPopup(`
-                          <div style="min-width:180px;font-family:sans-serif;">
+                          <div style="min-width:200px;font-family:sans-serif;">
                             <b style="font-size:13px;">${d.property_address}</b><br/>
-                            <span style="display:inline-block;margin:3px 0;padding:2px 6px;border-radius:4px;font-size:10px;background:${color}22;color:${color};font-weight:600;">${stageLabel}</span><br/>
-                            ${price ? `<span style="font-size:12px;color:#666;">$${parseFloat(price).toLocaleString()}</span><br/>` : ''}
-                            ${d.zillow_url ? `<a href="${d.zillow_url}" target="_blank" style="font-size:11px;color:#3b82f6;">View on Zillow →</a>` : ''}
+                            <span style="display:inline-block;margin:3px 0;padding:2px 6px;border-radius:4px;font-size:10px;background:${color}22;color:${color};font-weight:600;">${stageLabel}</span>
+                            ${closedDate ? `<span style="font-size:10px;color:#94a3b8;margin-left:4px;">${closedDate}</span>` : ''}<br/>
+                            ${ucPrice ? `<span style="font-size:11px;color:#666;">UC: $${ucPrice.toLocaleString()}</span><br/>` : ''}
+                            ${soldPrice ? `<span style="font-size:12px;color:#22c55e;font-weight:600;">Sold: $${soldPrice.toLocaleString()}</span><br/>` : ''}
+                            ${!soldPrice && price ? `<span style="font-size:12px;color:#666;">$${parseFloat(price).toLocaleString()}</span><br/>` : ''}
+                            ${soldPrice && ucPrice ? `<span style="font-size:11px;color:#f59e0b;">Spread: $${(soldPrice - ucPrice).toLocaleString()}</span><br/>` : ''}
+                            ${d.agent_name ? `<span style="font-size:10px;color:#94a3b8;">🤝 ${d.agent_name}</span><br/>` : ''}
+                            ${d.zillow_url ? `<a href="${d.zillow_url}" target="_blank" style="font-size:11px;color:#3b82f6;text-decoration:none;">🔗 View on Zillow →</a>` : ''}
                           </div>
                         `);
                       });
