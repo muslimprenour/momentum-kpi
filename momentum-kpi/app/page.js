@@ -197,6 +197,12 @@ const db = {
   monthlyGoals: {
     getByUser: (userId, year) => supabaseFetch(`monthly_goals?user_id=eq.${userId}&year=eq.${year}&select=*`),
     upsert: (goal) => supabaseFetch('monthly_goals?on_conflict=user_id,year,month', { method: 'POST', body: [goal], prefer: 'return=representation,resolution=merge-duplicates' }),
+  },
+  buyers: {
+    getByOrg: (orgId) => supabaseFetch(`buyers?organization_id=eq.${orgId}&select=*&order=name.asc`),
+    create: (buyer) => supabaseFetch('buyers', { method: 'POST', body: [buyer] }),
+    update: (buyerId, updates) => supabaseFetch(`buyers?id=eq.${buyerId}`, { method: 'PATCH', body: updates }),
+    delete: (buyerId) => supabaseFetch(`buyers?id=eq.${buyerId}`, { method: 'DELETE' }),
   }
 };
 
@@ -1360,7 +1366,7 @@ export default function MomentumApp() {
     assignment: null,
     hud: null
   });
-  const [dealsView, setDealsView] = useState('pipeline'); // 'pipeline' or 'closed'
+  const [dealsView, setDealsView] = useState('pipeline'); // 'pipeline', 'closed', 'map', 'buyers'
   const [pipelineViewMode, setPipelineViewMode] = useState('kanban'); // 'kanban' or 'list'
   const [showAddPipeline, setShowAddPipeline] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState(null);
@@ -1380,6 +1386,18 @@ export default function MomentumApp() {
   // Activity Feed & Goals state
   const [activityFeed, setActivityFeed] = useState([]);
   const [financialGoals, setFinancialGoals] = useState([]);
+  const [buyers, setBuyers] = useState([]);
+  const [showAddBuyer, setShowAddBuyer] = useState(false);
+  const [editingBuyer, setEditingBuyer] = useState(null);
+  const [buyerForm, setBuyerForm] = useState({
+    name: '', email: '', phone: '', company: '',
+    buyer_type: 'cash', preferred_areas: '',
+    min_price: '', max_price: '',
+    property_types: [], notes: '',
+    followup_days: '14', active: true
+  });
+  const [buyerSearch, setBuyerSearch] = useState('');
+  const [mapLoaded, setMapLoaded] = useState(false);
   const [showTaxSetup, setShowTaxSetup] = useState(false);
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
@@ -1477,6 +1495,7 @@ export default function MomentumApp() {
       loadPipeline();
       loadActivityFeed();
       loadFinancialGoals();
+      loadBuyers();
       if (organization.kpi_goals) setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
     }
   }, [currentUser, organization]);
@@ -1562,6 +1581,44 @@ export default function MomentumApp() {
       const { data } = await db.personalGoals.getByUser(currentUser.id);
       if (data) setFinancialGoals(data);
     } catch (e) { console.log('Personal goals table not ready yet'); }
+  };
+
+  const loadBuyers = async () => {
+    if (!organization) return;
+    try {
+      const { data } = await db.buyers.getByOrg(organization.id);
+      if (data) setBuyers(data);
+    } catch (e) { console.log('Buyers table not ready yet'); }
+  };
+
+  const geocodeAddress = async (address) => {
+    try {
+      const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=us`);
+      const results = await resp.json();
+      if (results?.[0]) return { latitude: parseFloat(results[0].lat), longitude: parseFloat(results[0].lon) };
+    } catch (e) { console.log('Geocode failed:', e); }
+    return null;
+  };
+
+  const matchBuyersToDeal = (deal) => {
+    const price = parseFloat(deal.revised_uc_price || deal.uc_price || deal.accepted_price || deal.offer_amount || 0);
+    const addr = (deal.property_address || '').toLowerCase();
+    return buyers.filter(b => {
+      if (!b.active) return false;
+      let score = 0;
+      if (b.min_price && price >= parseFloat(b.min_price)) score++;
+      if (b.max_price && price <= parseFloat(b.max_price)) score++;
+      if (b.preferred_areas) {
+        const areas = (Array.isArray(b.preferred_areas) ? b.preferred_areas : b.preferred_areas.split(',')).map(a => a.trim().toLowerCase());
+        if (areas.some(a => a && addr.includes(a))) score += 2;
+      }
+      return score > 0;
+    }).sort((a, b) => {
+      // Sort by match quality
+      const scoreA = (a.min_price && price >= parseFloat(a.min_price) ? 1 : 0) + (a.max_price && price <= parseFloat(a.max_price) ? 1 : 0);
+      const scoreB = (b.min_price && price >= parseFloat(b.min_price) ? 1 : 0) + (b.max_price && price <= parseFloat(b.max_price) ? 1 : 0);
+      return scoreB - scoreA;
+    });
   };
 
   const logActivity = async (type, description, metadata = {}) => {
@@ -3073,6 +3130,12 @@ export default function MomentumApp() {
                 <button onClick={() => setDealsView('closed')} className={`px-4 py-2 rounded-md text-sm font-semibold transition ${dealsView === 'closed' ? 'bg-green-600 text-white' : 'text-slate-400 hover:text-white'}`}>
                   ✅ Closed
                 </button>
+                <button onClick={() => setDealsView('map')} className={`px-4 py-2 rounded-md text-sm font-semibold transition ${dealsView === 'map' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                  🗺️ Map
+                </button>
+                <button onClick={() => setDealsView('buyers')} className={`px-4 py-2 rounded-md text-sm font-semibold transition ${dealsView === 'buyers' ? 'bg-orange-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                  🏠 Buyers
+                </button>
               </div>
               {dealsView === 'pipeline' && (
                 <div className="flex items-center gap-1 ml-auto">
@@ -3291,6 +3354,15 @@ export default function MomentumApp() {
                   setShowAddPipeline(false);
                   setEditingPipeline(null);
                   setPipelineFiles({ psa: null, ar_addendum: null, assignment: null, hud: null });
+                  // Background geocode if no coords yet
+                  if (dealId && !data.latitude && data.property_address) {
+                    geocodeAddress(data.property_address).then(coords => {
+                      if (coords) {
+                        db.pipeline.update(dealId, coords);
+                        setPipelineDeals(prev => prev.map(d => d.id === dealId ? { ...d, ...coords } : d));
+                      }
+                    });
+                  }
                 } catch (e) {
                   alert('Error saving pipeline deal. Run the SQL migration first!');
                 }
@@ -3598,7 +3670,18 @@ export default function MomentumApp() {
                                 <p className="text-green-400 text-xs font-semibold">🏁 Closing Details</p>
                                 <div>
                                   <label className="text-slate-400 text-xs">Buyer Name</label>
-                                  <input type="text" value={pipelineForm.buyer_name} onChange={e => setPipelineForm(f => ({ ...f, buyer_name: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Buyer name" />
+                                  <div className="relative">
+                                    <input type="text" value={pipelineForm.buyer_name} onChange={e => setPipelineForm(f => ({ ...f, buyer_name: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Type or select buyer..." />
+                                    {pipelineForm.buyer_name && buyers.filter(b => b.active && b.name.toLowerCase().includes((pipelineForm.buyer_name || '').toLowerCase()) && b.name !== pipelineForm.buyer_name).length > 0 && (
+                                      <div className="absolute z-10 w-full mt-1 bg-slate-700 border border-slate-600 rounded-lg shadow-lg max-h-32 overflow-y-auto">
+                                        {buyers.filter(b => b.active && b.name.toLowerCase().includes(pipelineForm.buyer_name.toLowerCase()) && b.name !== pipelineForm.buyer_name).slice(0, 5).map(b => (
+                                          <button key={b.id} onClick={() => setPipelineForm(f => ({ ...f, buyer_name: b.name }))} className="w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-600 transition">
+                                            {b.name} <span className="text-slate-500 text-[10px]">{b.buyer_type === 'cash' ? '💵' : '🏦'} {currentUser?.role === 'owner' && b.phone ? b.phone : ''}</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                   <label className="flex items-center gap-2 text-sm cursor-pointer col-span-1">
@@ -5462,6 +5545,445 @@ export default function MomentumApp() {
             )}
             </>
             )}
+
+            {/* ======= MAP VIEW ======= */}
+            {dealsView === 'map' && (() => {
+              const STAGE_COLORS = {
+                offer_accepted: '#a855f7', under_contract: '#f59e0b', closing: '#22c55e'
+              };
+              const allMapDeals = [
+                ...pipelineDeals.map(d => ({ ...d, _type: 'pipeline' })),
+                ...deals.map(d => ({ ...d, _type: 'closed', stage: 'closed' }))
+              ].filter(d => d.latitude && d.longitude);
+
+              const geocodeAll = async () => {
+                const toGeocode = pipelineDeals.filter(d => !d.latitude && d.property_address);
+                if (toGeocode.length === 0) { alert('All pipeline deals already have coordinates'); return; }
+                let count = 0;
+                for (const deal of toGeocode) {
+                  const coords = await geocodeAddress(deal.property_address);
+                  if (coords) {
+                    await db.pipeline.update(deal.id, coords);
+                    setPipelineDeals(prev => prev.map(d => d.id === deal.id ? { ...d, ...coords } : d));
+                    count++;
+                  }
+                  await new Promise(r => setTimeout(r, 1100)); // Nominatim rate limit
+                }
+                alert(`Geocoded ${count}/${toGeocode.length} deals`);
+              };
+
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block" /> Accepted</span>
+                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> UC</span>
+                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> Closing</span>
+                      <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-slate-500 inline-block" /> Closed</span>
+                    </div>
+                    <button onClick={geocodeAll} className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg">
+                      📍 Geocode All ({pipelineDeals.filter(d => !d.latitude).length} pending)
+                    </button>
+                  </div>
+                  <div id="deal-map" className="w-full h-[500px] rounded-xl border border-slate-700 bg-slate-800 overflow-hidden" ref={el => {
+                    if (!el || el._leafletInit) return;
+                    el._leafletInit = true;
+                    // Load Leaflet
+                    if (!document.getElementById('leaflet-css')) {
+                      const css = document.createElement('link');
+                      css.id = 'leaflet-css';
+                      css.rel = 'stylesheet';
+                      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+                      document.head.appendChild(css);
+                    }
+                    const initMap = () => {
+                      if (!window.L) {
+                        const script = document.createElement('script');
+                        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+                        script.onload = () => buildMap();
+                        document.head.appendChild(script);
+                      } else {
+                        buildMap();
+                      }
+                    };
+                    const buildMap = () => {
+                      const L = window.L;
+                      if (el._map) { el._map.remove(); }
+                      const map = L.map(el).setView([40.0583, -74.4057], 8); // NJ center
+                      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap'
+                      }).addTo(map);
+                      el._map = map;
+                      // Add pins
+                      const allDeals = [
+                        ...pipelineDeals.map(d => ({ ...d, _type: 'pipeline' })),
+                        ...deals.filter(d => d.latitude && d.longitude).map(d => ({ ...d, _type: 'closed', stage: 'closed' }))
+                      ];
+                      allDeals.forEach(d => {
+                        if (!d.latitude || !d.longitude) return;
+                        const color = d.stage === 'closed' ? '#64748b' : (STAGE_COLORS[d.stage] || '#64748b');
+                        const price = d.revised_uc_price || d.uc_price || d.accepted_price || d.offer_amount || d.sold_price || 0;
+                        const icon = L.divIcon({
+                          className: '',
+                          html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
+                          iconSize: [14, 14], iconAnchor: [7, 7]
+                        });
+                        const marker = L.marker([d.latitude, d.longitude], { icon }).addTo(map);
+                        const stageLabel = d.stage === 'closed' ? 'Closed' : d.stage === 'offer_accepted' ? 'Offer Accepted' : d.stage === 'under_contract' ? 'Under Contract' : 'Closing';
+                        marker.bindPopup(`
+                          <div style="min-width:180px;font-family:sans-serif;">
+                            <b style="font-size:13px;">${d.property_address}</b><br/>
+                            <span style="display:inline-block;margin:3px 0;padding:2px 6px;border-radius:4px;font-size:10px;background:${color}22;color:${color};font-weight:600;">${stageLabel}</span><br/>
+                            ${price ? `<span style="font-size:12px;color:#666;">$${parseFloat(price).toLocaleString()}</span><br/>` : ''}
+                            ${d.zillow_url ? `<a href="${d.zillow_url}" target="_blank" style="font-size:11px;color:#3b82f6;">View on Zillow →</a>` : ''}
+                          </div>
+                        `);
+                      });
+                      // Fit bounds if we have pins
+                      const withCoords = allDeals.filter(d => d.latitude && d.longitude);
+                      if (withCoords.length > 0) {
+                        const bounds = L.latLngBounds(withCoords.map(d => [d.latitude, d.longitude]));
+                        map.fitBounds(bounds, { padding: [30, 30] });
+                      }
+                    };
+                    initMap();
+                  }} />
+                  {allMapDeals.length === 0 && (
+                    <div className="bg-slate-800 rounded-xl p-8 text-center border border-slate-700">
+                      <span className="text-3xl block mb-2">📍</span>
+                      <p className="text-slate-400 text-sm">No geocoded deals yet. Click "Geocode All" to place your pipeline deals on the map.</p>
+                    </div>
+                  )}
+
+                  {/* Buyer matching on map - show matches for UC/closing deals */}
+                  {pipelineDeals.filter(d => d.stage === 'under_contract' || d.stage === 'closing').length > 0 && buyers.length > 0 && (
+                    <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+                      <h3 className="text-white font-bold text-sm mb-3 flex items-center gap-2">🤝 Buyer Matches for Active Deals</h3>
+                      <div className="space-y-3">
+                        {pipelineDeals.filter(d => d.stage === 'under_contract' || d.stage === 'closing').map(deal => {
+                          const matches = matchBuyersToDeal(deal);
+                          if (matches.length === 0) return null;
+                          return (
+                            <div key={deal.id} className="bg-slate-700/50 rounded-lg p-3">
+                              <p className="text-white text-sm font-semibold truncate">{deal.property_address}</p>
+                              <p className="text-slate-400 text-[10px] mb-2">${parseFloat(deal.revised_uc_price || deal.uc_price || 0).toLocaleString()} UC</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {matches.slice(0, 5).map(b => (
+                                  <span key={b.id} className="text-[10px] px-2 py-1 rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/20">
+                                    🏠 {b.name} {currentUser?.role === 'owner' && b.phone && `· ${b.phone}`}
+                                  </span>
+                                ))}
+                                {matches.length > 5 && <span className="text-[10px] text-slate-500">+{matches.length - 5} more</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* ======= BUYERS VIEW ======= */}
+            {dealsView === 'buyers' && (() => {
+              const PROP_TYPES = [
+                { key: 'single_family', label: 'Single Family', icon: '🏡' },
+                { key: 'multi_family', label: 'Multi-Family', icon: '🏘️' },
+                { key: 'townhouse', label: 'Townhouse', icon: '🏠' },
+                { key: 'condo', label: 'Condo', icon: '🏢' },
+                { key: 'land', label: 'Land', icon: '🌿' },
+                { key: 'commercial', label: 'Commercial', icon: '🏪' }
+              ];
+              const BUYER_TYPES = [
+                { key: 'cash', label: 'Cash', icon: '💵' },
+                { key: 'hard_money', label: 'Hard Money', icon: '🏦' },
+                { key: 'conventional', label: 'Conventional', icon: '📋' },
+                { key: 'fha', label: 'FHA', icon: '🏛️' }
+              ];
+
+              const saveBuyer = async () => {
+                if (!buyerForm.name.trim()) { alert('Buyer name required'); return; }
+                const data = {
+                  organization_id: organization.id,
+                  name: buyerForm.name,
+                  email: buyerForm.email || null,
+                  phone: buyerForm.phone || null,
+                  company: buyerForm.company || null,
+                  buyer_type: buyerForm.buyer_type,
+                  preferred_areas: buyerForm.preferred_areas ? buyerForm.preferred_areas.split(',').map(a => a.trim()).filter(Boolean) : [],
+                  min_price: buyerForm.min_price ? parseFloat(buyerForm.min_price) : null,
+                  max_price: buyerForm.max_price ? parseFloat(buyerForm.max_price) : null,
+                  property_types: buyerForm.property_types || [],
+                  notes: buyerForm.notes || null,
+                  followup_days: parseInt(buyerForm.followup_days) || 14,
+                  active: buyerForm.active !== false,
+                  updated_at: new Date().toISOString()
+                };
+                try {
+                  if (editingBuyer) {
+                    await db.buyers.update(editingBuyer.id, data);
+                    setBuyers(prev => prev.map(b => b.id === editingBuyer.id ? { ...b, ...data } : b));
+                  } else {
+                    data.created_at = new Date().toISOString();
+                    const { data: result } = await db.buyers.create(data);
+                    if (result?.[0]) setBuyers(prev => [...prev, result[0]]);
+                  }
+                  setShowAddBuyer(false);
+                  setEditingBuyer(null);
+                } catch (e) { alert('Error saving buyer. Run the SQL migration first!'); }
+              };
+
+              const deleteBuyer = async (buyer) => {
+                if (!confirm(`Delete ${buyer.name}?`)) return;
+                await db.buyers.delete(buyer.id);
+                setBuyers(prev => prev.filter(b => b.id !== buyer.id));
+              };
+
+              const editBuyer = (b) => {
+                setBuyerForm({
+                  name: b.name || '', email: b.email || '', phone: b.phone || '',
+                  company: b.company || '', buyer_type: b.buyer_type || 'cash',
+                  preferred_areas: Array.isArray(b.preferred_areas) ? b.preferred_areas.join(', ') : (b.preferred_areas || ''),
+                  min_price: b.min_price || '', max_price: b.max_price || '',
+                  property_types: b.property_types || [], notes: b.notes || '',
+                  followup_days: b.followup_days || '14', active: b.active !== false
+                });
+                setEditingBuyer(b);
+                setShowAddBuyer(true);
+              };
+
+              const toggleBuyerActive = async (buyer) => {
+                const newActive = !buyer.active;
+                await db.buyers.update(buyer.id, { active: newActive, updated_at: new Date().toISOString() });
+                setBuyers(prev => prev.map(b => b.id === buyer.id ? { ...b, active: newActive } : b));
+              };
+
+              const filtered = buyers.filter(b => {
+                if (!buyerSearch) return true;
+                const s = buyerSearch.toLowerCase();
+                return (b.name || '').toLowerCase().includes(s) || (b.company || '').toLowerCase().includes(s) || (b.phone || '').includes(s) || (b.preferred_areas || []).join(',').toLowerCase().includes(s);
+              });
+
+              const activeBuyers = filtered.filter(b => b.active);
+              const inactiveBuyers = filtered.filter(b => !b.active);
+
+              // Count matching deals per buyer
+              const getMatchCount = (buyer) => {
+                return pipelineDeals.filter(d => {
+                  const price = parseFloat(d.revised_uc_price || d.uc_price || d.accepted_price || d.offer_amount || 0);
+                  const addr = (d.property_address || '').toLowerCase();
+                  let match = false;
+                  if (buyer.min_price && buyer.max_price && price >= parseFloat(buyer.min_price) && price <= parseFloat(buyer.max_price)) match = true;
+                  if (buyer.preferred_areas) {
+                    const areas = (Array.isArray(buyer.preferred_areas) ? buyer.preferred_areas : []).map(a => a.trim().toLowerCase());
+                    if (areas.some(a => a && addr.includes(a))) match = true;
+                  }
+                  return match;
+                }).length;
+              };
+
+              return (
+                <>
+                  {/* Add/Edit Modal */}
+                  {showAddBuyer && (
+                    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                      <div className="bg-slate-800 rounded-2xl w-full max-w-md border border-slate-700 max-h-[90vh] flex flex-col">
+                        <div className="flex justify-between items-center p-5 pb-3 border-b border-slate-700">
+                          <h3 className="text-lg font-bold text-white">{editingBuyer ? 'Edit Buyer' : 'Add Buyer'}</h3>
+                          <button onClick={() => { setShowAddBuyer(false); setEditingBuyer(null); }} className="text-slate-400 hover:text-white text-2xl">×</button>
+                        </div>
+                        <div className="p-5 pt-3 overflow-y-auto flex-1 space-y-3">
+                          <div>
+                            <label className="text-slate-400 text-xs">Name *</label>
+                            <input type="text" value={buyerForm.name} onChange={e => setBuyerForm(f => ({ ...f, name: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Buyer name" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-slate-400 text-xs">Phone</label>
+                              <input type="tel" value={buyerForm.phone} onChange={e => setBuyerForm(f => ({ ...f, phone: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                            </div>
+                            <div>
+                              <label className="text-slate-400 text-xs">Email</label>
+                              <input type="email" value={buyerForm.email} onChange={e => setBuyerForm(f => ({ ...f, email: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-slate-400 text-xs">Company</label>
+                            <input type="text" value={buyerForm.company} onChange={e => setBuyerForm(f => ({ ...f, company: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                          </div>
+                          {/* Buyer Type */}
+                          <div>
+                            <label className="text-slate-400 text-xs mb-1.5 block">Buyer Type</label>
+                            <div className="flex flex-wrap gap-2">
+                              {BUYER_TYPES.map(t => (
+                                <button key={t.key} onClick={() => setBuyerForm(f => ({ ...f, buyer_type: t.key }))} className={`text-xs px-3 py-1.5 rounded-lg transition ${buyerForm.buyer_type === t.key ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'bg-slate-700 text-slate-400 border border-slate-600'}`}>
+                                  {t.icon} {t.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          {/* Price Range */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-slate-400 text-xs">Min Price ($)</label>
+                              <input type="number" value={buyerForm.min_price} onChange={e => setBuyerForm(f => ({ ...f, min_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="100000" />
+                            </div>
+                            <div>
+                              <label className="text-slate-400 text-xs">Max Price ($)</label>
+                              <input type="number" value={buyerForm.max_price} onChange={e => setBuyerForm(f => ({ ...f, max_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="500000" />
+                            </div>
+                          </div>
+                          {/* Preferred Areas */}
+                          <div>
+                            <label className="text-slate-400 text-xs">Preferred Areas (comma-separated)</label>
+                            <input type="text" value={buyerForm.preferred_areas} onChange={e => setBuyerForm(f => ({ ...f, preferred_areas: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Newark, Jersey City, Paterson" />
+                          </div>
+                          {/* Property Types */}
+                          <div>
+                            <label className="text-slate-400 text-xs mb-1.5 block">Property Types</label>
+                            <div className="flex flex-wrap gap-2">
+                              {PROP_TYPES.map(t => (
+                                <button key={t.key} onClick={() => setBuyerForm(f => {
+                                  const types = f.property_types || [];
+                                  return { ...f, property_types: types.includes(t.key) ? types.filter(x => x !== t.key) : [...types, t.key] };
+                                })} className={`text-xs px-3 py-1.5 rounded-lg transition ${(buyerForm.property_types || []).includes(t.key) ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-700 text-slate-400 border border-slate-600'}`}>
+                                  {t.icon} {t.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          {/* Follow-up */}
+                          <div>
+                            <label className="text-slate-400 text-xs">Follow-up Frequency (days)</label>
+                            <input type="number" value={buyerForm.followup_days} onChange={e => setBuyerForm(f => ({ ...f, followup_days: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                          </div>
+                          <div>
+                            <label className="text-slate-400 text-xs">Notes</label>
+                            <textarea value={buyerForm.notes} onChange={e => setBuyerForm(f => ({ ...f, notes: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" rows={2} />
+                          </div>
+                        </div>
+                        <div className="flex gap-3 p-5 pt-3 border-t border-slate-700">
+                          <button onClick={() => { setShowAddBuyer(false); setEditingBuyer(null); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+                          <button onClick={saveBuyer} className="flex-1 bg-orange-600 hover:bg-orange-700 text-white py-2.5 rounded-lg text-sm font-semibold">{editingBuyer ? 'Update' : 'Add Buyer'}</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Header */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 relative">
+                      <input type="text" value={buyerSearch} onChange={e => setBuyerSearch(e.target.value)} placeholder="Search buyers..." className="w-full bg-slate-800 text-white p-2.5 pl-9 rounded-lg border border-slate-700 text-sm" />
+                      <span className="absolute left-3 top-3 text-slate-500 text-sm">🔍</span>
+                    </div>
+                    {currentUser?.role === 'owner' && (
+                    <button onClick={() => { setShowAddBuyer(true); setEditingBuyer(null); setBuyerForm({ name: '', email: '', phone: '', company: '', buyer_type: 'cash', preferred_areas: '', min_price: '', max_price: '', property_types: [], notes: '', followup_days: '14', active: true }); }} className="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2.5 px-4 rounded-lg text-sm whitespace-nowrap">
+                      + Add Buyer
+                    </button>
+                    )}
+                  </div>
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 text-center">
+                      <p className="text-white font-bold text-lg">{buyers.filter(b => b.active).length}</p>
+                      <p className="text-slate-400 text-[10px] uppercase">Active</p>
+                    </div>
+                    <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 text-center">
+                      <p className="text-white font-bold text-lg">{buyers.filter(b => !b.active).length}</p>
+                      <p className="text-slate-400 text-[10px] uppercase">Inactive</p>
+                    </div>
+                    <div className="bg-slate-800 rounded-lg p-3 border border-slate-700 text-center">
+                      <p className="text-orange-400 font-bold text-lg">{buyers.filter(b => b.buyer_type === 'cash').length}</p>
+                      <p className="text-slate-400 text-[10px] uppercase">Cash Buyers</p>
+                    </div>
+                  </div>
+
+                  {/* Buyer Cards */}
+                  {activeBuyers.length === 0 && inactiveBuyers.length === 0 ? (
+                    <div className="bg-slate-800 rounded-xl p-8 text-center border border-slate-700">
+                      <span className="text-3xl block mb-2">🏠</span>
+                      <p className="text-slate-400 text-sm">{buyerSearch ? 'No buyers match your search' : 'No buyers yet. Add your first buyer to start matching deals!'}</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {activeBuyers.map(b => {
+                        const matchCount = getMatchCount(b);
+                        const areas = Array.isArray(b.preferred_areas) ? b.preferred_areas : [];
+                        const types = b.property_types || [];
+                        return (
+                          <div key={b.id} className="bg-slate-800 rounded-xl p-4 border border-slate-700 hover:border-slate-600 transition group">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-white font-semibold text-sm">{b.name}</p>
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${b.buyer_type === 'cash' ? 'bg-green-500/20 text-green-400' : b.buyer_type === 'hard_money' ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-600 text-slate-400'}`}>
+                                    {BUYER_TYPES.find(t => t.key === b.buyer_type)?.icon} {BUYER_TYPES.find(t => t.key === b.buyer_type)?.label || b.buyer_type}
+                                  </span>
+                                  {matchCount > 0 && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 font-bold">{matchCount} match{matchCount > 1 ? 'es' : ''}</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-400">
+                                  {currentUser?.role === 'owner' && b.phone && <span>📱 {b.phone}</span>}
+                                  {currentUser?.role === 'owner' && b.email && <span>✉️ {b.email}</span>}
+                                  {currentUser?.role === 'owner' && b.company && <span>🏢 {b.company}</span>}
+                                </div>
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {(b.min_price || b.max_price) && (
+                                    <span className="text-[10px] px-2 py-0.5 rounded bg-green-500/10 text-green-400 border border-green-500/20">
+                                      💰 ${b.min_price ? `${(parseFloat(b.min_price)/1000).toFixed(0)}k` : '0'} - ${b.max_price ? `${(parseFloat(b.max_price)/1000).toFixed(0)}k` : '∞'}
+                                    </span>
+                                  )}
+                                  {areas.map(a => (
+                                    <span key={a} className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">📍 {a}</span>
+                                  ))}
+                                  {types.map(t => {
+                                    const pt = PROP_TYPES.find(p => p.key === t);
+                                    return pt ? <span key={t} className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">{pt.icon} {pt.label}</span> : null;
+                                  })}
+                                </div>
+                                {b.notes && <p className="text-slate-500 text-[10px] mt-1 truncate">📝 {b.notes}</p>}
+                              </div>
+                              {currentUser?.role === 'owner' && (
+                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                <button onClick={() => toggleBuyerActive(b)} className="text-xs p-1 text-slate-500 hover:text-amber-400" title="Deactivate">⏸️</button>
+                                <button onClick={() => editBuyer(b)} className="text-xs p-1 text-slate-500 hover:text-white">✏️</button>
+                                <button onClick={() => deleteBuyer(b)} className="text-xs p-1 text-slate-500 hover:text-red-400">🗑️</button>
+                              </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {inactiveBuyers.length > 0 && (
+                        <>
+                          <p className="text-slate-500 text-xs font-semibold mt-4 mb-1">Inactive ({inactiveBuyers.length})</p>
+                          {inactiveBuyers.map(b => (
+                            <div key={b.id} className="bg-slate-800/50 rounded-xl p-3 border border-slate-700/50 opacity-60 hover:opacity-100 transition group">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-slate-400 text-sm">{b.name}</p>
+                                  <p className="text-slate-600 text-[10px]">{currentUser?.role === 'owner' ? `${b.phone || ''} ${b.company ? `· ${b.company}` : ''}` : ''}</p>
+                                </div>
+                                {currentUser?.role === 'owner' && (
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                  <button onClick={() => toggleBuyerActive(b)} className="text-xs p-1 text-green-400" title="Reactivate">▶️</button>
+                                  <button onClick={() => editBuyer(b)} className="text-xs p-1 text-slate-500 hover:text-white">✏️</button>
+                                  <button onClick={() => deleteBuyer(b)} className="text-xs p-1 text-slate-500 hover:text-red-400">🗑️</button>
+                                </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
 
