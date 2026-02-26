@@ -1383,6 +1383,8 @@ export default function MomentumApp() {
     stage: 'offer_accepted', notes: '', sourced_by_user_id: '',
     ar_complete: false, ar_complete_date: '',
     had_price_reduction: false, revised_uc_price: '',
+    dd_type: 'calendar',
+    note_log: [],
     buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '',
     documents: { psa: false, ar_addendum: false, assignment: false, hud: false },
     psa_url: '', ar_addendum_url: '', assignment_url: '', hud_url: ''
@@ -1605,6 +1607,29 @@ export default function MomentumApp() {
       const { data } = await db.buyers.getByOrg(organization.id);
       if (data) setBuyers(data);
     } catch (e) { console.log('Buyers table not ready yet'); }
+  };
+
+  // Calculate business days between now and target date
+  const getBusinessDaysLeft = (targetDate) => {
+    const target = new Date(targetDate + 'T23:59:59');
+    const now = new Date();
+    if (target <= now) return Math.ceil((target - now) / 86400000); // negative = expired
+    let count = 0;
+    const cur = new Date(now);
+    cur.setHours(0,0,0,0);
+    const end = new Date(target);
+    end.setHours(0,0,0,0);
+    while (cur < end) {
+      cur.setDate(cur.getDate() + 1);
+      const day = cur.getDay();
+      if (day !== 0 && day !== 6) count++;
+    }
+    return count;
+  };
+
+  const formatDDDate = (dateStr) => {
+    if (!dateStr) return '';
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const geocodeAddress = async (address) => {
@@ -3164,7 +3189,7 @@ export default function MomentumApp() {
                     </button>
                   </div>
                   <button
-                    onClick={() => { setShowAddPipeline(true); setEditingPipeline(null); setPipelineForm({ property_address: '', zillow_url: '', asking_price: '', deal_source: 'on_market', deal_type: 'wholesale', offer_amount: '', offer_date: '', accepted_price: '', uc_price: '', uc_date: '', inspection_date: '', est_close_date: '', est_revenue: '', sold_price: '', agent_name: '', agent_email: '', agent_phone: '', stage: 'offer_accepted', notes: '', sourced_by_user_id: '', ar_complete: false, ar_complete_date: '', had_price_reduction: false, revised_uc_price: '', buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '', documents: { psa: false, ar_addendum: false, assignment: false, hud: false }, psa_url: '', ar_addendum_url: '', assignment_url: '', hud_url: '' }); setPipelineFiles({ psa: null, ar_addendum: null, assignment: null, hud: null }); }}
+                    onClick={() => { setShowAddPipeline(true); setEditingPipeline(null); setPipelineForm({ property_address: '', zillow_url: '', asking_price: '', deal_source: 'on_market', deal_type: 'wholesale', offer_amount: '', offer_date: '', accepted_price: '', uc_price: '', uc_date: '', inspection_date: '', est_close_date: '', est_revenue: '', sold_price: '', agent_name: '', agent_email: '', agent_phone: '', stage: 'offer_accepted', notes: '', sourced_by_user_id: '', ar_complete: false, ar_complete_date: '', had_price_reduction: false, revised_uc_price: '', dd_type: 'calendar', note_log: [], buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '', documents: { psa: false, ar_addendum: false, assignment: false, hud: false }, psa_url: '', ar_addendum_url: '', assignment_url: '', hud_url: '' }); setPipelineFiles({ psa: null, ar_addendum: null, assignment: null, hud: null }); }}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-sm"
                   >
                     + Add Deal
@@ -3235,7 +3260,7 @@ export default function MomentumApp() {
                     split_with_user_id: deal.sourced_by_user_id || '',
                     split_percentage: '50', split_type: 'percentage', split_amount: '',
                     closed_date: getTodayInOrgTimezone(),
-                    notes: deal.notes || '',
+                    notes: (deal.note_log || []).length > 0 ? deal.note_log.map(n => `[${n.stage} ${new Date(n.timestamp).toLocaleDateString()}] ${n.text}`).join('\n') : (deal.notes || ''),
                     deal_source: deal.deal_source || 'on_market',
                     original_list_price: deal.asking_price || '',
                     had_price_reduction: deal.had_price_reduction || false, original_uc_price: deal.had_price_reduction ? (deal.uc_price || '') : '',
@@ -3281,6 +3306,7 @@ export default function MomentumApp() {
                   buyer_name: deal.buyer_name || '', buyer_emd_submitted: deal.buyer_emd_submitted || false,
                   buyer_emd_amount: deal.buyer_emd_amount || '',
                   had_price_reduction: deal.had_price_reduction || false, revised_uc_price: deal.revised_uc_price || '',
+                  dd_type: deal.dd_type || 'calendar', note_log: deal.note_log || [],
                   documents: deal.documents || { psa: false, ar_addendum: false, assignment: false, hud: false },
                   psa_url: deal.psa_url || '', ar_addendum_url: deal.ar_addendum_url || '',
                   assignment_url: deal.assignment_url || '', hud_url: deal.hud_url || ''
@@ -3328,6 +3354,8 @@ export default function MomentumApp() {
                   buyer_emd_amount: pipelineForm.buyer_emd_amount ? parseFloat(pipelineForm.buyer_emd_amount) : null,
                   had_price_reduction: pipelineForm.had_price_reduction || false,
                   revised_uc_price: pipelineForm.revised_uc_price ? parseFloat(pipelineForm.revised_uc_price) : null,
+                  dd_type: pipelineForm.dd_type || 'calendar',
+                  note_log: pipelineForm.note_log || [],
                   documents: pipelineForm.documents || {},
                   psa_url: pipelineForm.psa_url || null,
                   ar_addendum_url: pipelineForm.ar_addendum_url || null,
@@ -3393,7 +3421,7 @@ export default function MomentumApp() {
                 const memberName = member?.display_name || member?.name || '';
                 const daysInStage = Math.floor((new Date() - new Date(deal.updated_at || deal.created_at)) / 86400000);
                 const estRev = parseFloat(deal.est_revenue || 0) || (parseFloat(deal.sold_price || 0) - parseFloat(deal.revised_uc_price || deal.uc_price || deal.accepted_price || deal.offer_amount || 0)) || 0;
-                const ddLeft = deal.inspection_date ? Math.ceil((new Date(deal.inspection_date) - new Date()) / 86400000) : null;
+                const ddLeft = deal.inspection_date ? (deal.dd_type === 'business' ? getBusinessDaysLeft(deal.inspection_date) : Math.ceil((new Date(deal.inspection_date + 'T23:59:59') - new Date()) / 86400000)) : null; const ddDateStr = deal.inspection_date ? formatDDDate(deal.inspection_date) : ''; const ddTypeLabel = deal.dd_type === 'business' ? 'bus.' : 'cal.';
                 const closeLeft = deal.est_close_date ? Math.ceil((new Date(deal.est_close_date) - new Date()) / 86400000) : null;
                 const docs = deal.documents || {};
                 
@@ -3454,7 +3482,8 @@ export default function MomentumApp() {
                                 'bg-slate-700/50 text-slate-400'
                               }`}>
                                 <span>{ddLeft < 0 ? '⛔' : ddLeft <= 3 ? '🔴' : ddLeft <= 7 ? '🟡' : '🟢'}</span>
-                                <span>{ddLeft < 0 ? `DD expired ${Math.abs(ddLeft)}d ago` : ddLeft === 0 ? 'DD expires TODAY' : `${ddLeft}d left for DD`}</span>
+                                <span>{ddLeft < 0 ? `DD expired ${Math.abs(ddLeft)}d ago` : ddLeft === 0 ? 'DD expires TODAY' : `${ddLeft} ${ddTypeLabel} days left`}</span>
+                                <span className="text-slate-500 font-normal ml-auto">{ddDateStr}</span>
                               </div>
                             )}
                           </div>
@@ -3512,7 +3541,24 @@ export default function MomentumApp() {
                       </div>
                     </div>
                     {deal.agent_name && <p className="text-slate-500 text-[10px] mt-1">🤝 {deal.agent_name}</p>}
-                    {deal.notes && <p className="text-slate-600 text-[10px] mt-1 truncate">📝 {deal.notes}</p>}
+                    {(() => {
+                      const log = deal.note_log || [];
+                      const latest = log.length > 0 ? log[log.length - 1] : null;
+                      if (latest) {
+                        const stageBg = latest.stage === 'Accepted' ? 'bg-purple-500/20 text-purple-400' : latest.stage === 'UC' ? 'bg-amber-500/20 text-amber-400' : 'bg-green-500/20 text-green-400';
+                        const t = new Date(latest.timestamp);
+                        return (
+                          <div className="flex items-center gap-1 mt-1">
+                            <span className={`text-[8px] px-1 py-0.5 rounded ${stageBg}`}>{latest.stage}</span>
+                            <p className="text-slate-600 text-[10px] truncate flex-1">📝 {latest.text}</p>
+                            <span className="text-slate-700 text-[8px]">{t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                            {log.length > 1 && <span className="text-slate-600 text-[8px]">+{log.length - 1}</span>}
+                          </div>
+                        );
+                      }
+                      if (deal.notes) return <p className="text-slate-600 text-[10px] mt-1 truncate">📝 {deal.notes}</p>;
+                      return null;
+                    })()}
                     {/* Stage actions */}
                     <div className="flex gap-1 mt-2 pt-2 border-t border-slate-700/50">
                       {deal.stage === 'offer_accepted' && !deal.ar_complete && (
@@ -3646,6 +3692,11 @@ export default function MomentumApp() {
                               <div>
                                 <label className="text-slate-400 text-xs">DD / Inspection Deadline</label>
                                 <input type="date" value={pipelineForm.inspection_date} onChange={e => setPipelineForm(f => ({ ...f, inspection_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                                <div className="flex items-center gap-2 mt-1.5">
+                                  <span className="text-slate-500 text-[10px]">Count as:</span>
+                                  <button onClick={() => setPipelineForm(f => ({ ...f, dd_type: 'calendar' }))} className={`text-[10px] px-2 py-0.5 rounded transition ${pipelineForm.dd_type !== 'business' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-700 text-slate-500 border border-slate-600'}`}>📅 Calendar Days</button>
+                                  <button onClick={() => setPipelineForm(f => ({ ...f, dd_type: 'business' }))} className={`text-[10px] px-2 py-0.5 rounded transition ${pipelineForm.dd_type === 'business' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-700 text-slate-500 border border-slate-600'}`}>💼 Business Days</button>
+                                </div>
                               </div>
                               {pipelineForm.stage === 'under_contract' && (
                                 <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 space-y-3">
@@ -3778,10 +3829,53 @@ export default function MomentumApp() {
                               </select>
                             </div>
                           )}
-                          {/* Notes */}
+                          {/* Notes Log */}
                           <div>
-                            <label className="text-slate-400 text-xs">Notes</label>
-                            <textarea value={pipelineForm.notes} onChange={e => setPipelineForm(f => ({ ...f, notes: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" rows={2} placeholder="Any notes about this deal..." />
+                            <label className="text-slate-400 text-xs">📝 Notes</label>
+                            <div className="flex gap-2 mt-1">
+                              <input type="text" id="pipeline-note-input" className="flex-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Add a note..." onKeyDown={e => {
+                                if (e.key === 'Enter' && e.target.value.trim()) {
+                                  const stageLabels = { offer_accepted: 'Accepted', under_contract: 'UC', closing: 'Closing' };
+                                  setPipelineForm(f => ({ ...f, note_log: [...(f.note_log || []), { text: e.target.value.trim(), timestamp: new Date().toISOString(), stage: stageLabels[f.stage] || f.stage, user: currentUser?.display_name || currentUser?.name || '' }] }));
+                                  e.target.value = '';
+                                }
+                              }} />
+                              <button onClick={() => {
+                                const input = document.getElementById('pipeline-note-input');
+                                if (input?.value.trim()) {
+                                  const stageLabels = { offer_accepted: 'Accepted', under_contract: 'UC', closing: 'Closing' };
+                                  setPipelineForm(f => ({ ...f, note_log: [...(f.note_log || []), { text: input.value.trim(), timestamp: new Date().toISOString(), stage: stageLabels[f.stage] || f.stage, user: currentUser?.display_name || currentUser?.name || '' }] }));
+                                  input.value = '';
+                                }
+                              }} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 rounded-lg transition">Add</button>
+                            </div>
+                            {(pipelineForm.note_log || []).length > 0 && (
+                              <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto">
+                                {[...(pipelineForm.note_log || [])].reverse().map((note, idx) => {
+                                  const t = new Date(note.timestamp);
+                                  const dateStr = t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                  const timeStr = t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                                  const stageBg = note.stage === 'Accepted' ? 'bg-purple-500/20 text-purple-400' : note.stage === 'UC' ? 'bg-amber-500/20 text-amber-400' : 'bg-green-500/20 text-green-400';
+                                  return (
+                                    <div key={idx} className="flex items-start gap-2 bg-slate-700/50 rounded-lg px-2.5 py-1.5">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-slate-300 text-xs">{note.text}</p>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                          <span className={`text-[9px] px-1.5 py-0.5 rounded ${stageBg}`}>{note.stage}</span>
+                                          <span className="text-slate-600 text-[9px]">{dateStr} {timeStr}</span>
+                                          {note.user && <span className="text-slate-600 text-[9px]">· {note.user}</span>}
+                                        </div>
+                                      </div>
+                                      <button onClick={() => setPipelineForm(f => ({ ...f, note_log: (f.note_log || []).filter((_, i) => i !== (f.note_log.length - 1 - idx)) }))} className="text-slate-600 hover:text-red-400 text-[10px] mt-0.5">✕</button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {/* Legacy notes migration */}
+                            {pipelineForm.notes && !(pipelineForm.note_log || []).length && (
+                              <p className="text-slate-500 text-[10px] mt-1 italic">📝 Old note: {pipelineForm.notes}</p>
+                            )}
                           </div>
                           {/* Commission Preview */}
                           {(() => {
@@ -3875,7 +3969,7 @@ export default function MomentumApp() {
                             const member = teamMembers.find(m => m.id === (deal.sourced_by_user_id || deal.user_id));
                             const stageIdx = STAGES.findIndex(s => s.key === deal.stage);
                             const docs = deal.documents || {};
-                            const ddLeft = deal.inspection_date ? Math.ceil((new Date(deal.inspection_date) - new Date()) / 86400000) : null;
+                            const ddLeft = deal.inspection_date ? (deal.dd_type === 'business' ? getBusinessDaysLeft(deal.inspection_date) : Math.ceil((new Date(deal.inspection_date + 'T23:59:59') - new Date()) / 86400000)) : null;
                             const closeLeft = deal.est_close_date ? Math.ceil((new Date(deal.est_close_date) - new Date()) / 86400000) : null;
                             return (
                               <div key={deal.id} className="p-3 flex items-center gap-3 hover:bg-slate-700/30 transition group">
@@ -5764,22 +5858,28 @@ export default function MomentumApp() {
                         const agentId = d.agent_name ? btoa(encodeURIComponent(d.agent_name)) : '';
                         
                         // Buyer display - role-aware
+                        const isOwner = currentUser?.role === 'owner';
                         let buyerLine = '';
                         if (d.dispo_help) {
-                          buyerLine = '<span style="font-size:10px;color:#fb923c;">🤝 Sold via Dispo</span><br/>';
+                          if (isOwner) {
+                            buyerLine = '<span style="font-size:10px;color:#fb923c;">🤝 Dispo: ' + (d.dispo_name || 'Unknown') + '</span><br/>';
+                          } else {
+                            buyerLine = '<span style="font-size:10px;color:#fb923c;">🤝 Sold via Dispo</span><br/>';
+                          }
+                        }
+                        // Buyer info
+                        const co = d.buyer_company || '';
+                        const nm = d.buyer_name || '';
+                        const partners = (d.buyer_partners || []).filter(p => p);
+                        if (isOwner) {
+                          if (nm) buyerLine += '<span style="font-size:10px;color:#fb923c;">🏠 Buyer: ' + nm + '</span>';
+                          if (co) buyerLine += '<span style="font-size:10px;color:#94a3b8;"> (' + co + ')</span>';
+                          if (partners.length > 0) buyerLine += '<span style="font-size:9px;color:#94a3b8;"> + ' + partners.join(', ') + '</span>';
+                          if (nm || co) buyerLine += '<br/>';
                         } else {
-                          const isOwner = currentUser?.role === 'owner';
-                          const co = d.buyer_company || '';
-                          const nm = d.buyer_name || '';
-                          const firstName = nm.split(' ')[0] || '';
-                          const displayName = co ? co : (isOwner ? nm : firstName);
-                          const partners = (d.buyer_partners || []).filter(p => p);
+                          const displayName = co ? co : (nm.split(' ')[0] || '');
                           if (displayName) {
-                            buyerLine = '<span style="font-size:10px;color:#fb923c;">🏠 ' + displayName;
-                            if (isOwner && partners.length > 0) {
-                              buyerLine += ' <span style="color:#94a3b8;">(+ ' + partners.length + ' partner' + (partners.length > 1 ? 's' : '') + ')</span>';
-                            }
-                            buyerLine += '</span><br/>';
+                            buyerLine += '<span style="font-size:10px;color:#fb923c;">🏠 ' + displayName + '</span><br/>';
                           }
                         }
 
