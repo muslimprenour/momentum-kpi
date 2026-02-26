@@ -1351,6 +1351,8 @@ export default function MomentumApp() {
     attorney_fee_split: false,
     // Buyer info
     buyer_name: '',
+    buyer_company: '',
+    buyer_partners: [],
     // Agent info (auto-adds to VIP agents)
     agent_name: '',
     agent_email: '',
@@ -3246,7 +3248,7 @@ export default function MomentumApp() {
                     realtor_commission_paid: false, realtor_commission_type: 'percentage',
                     realtor_commission_percentage: '', realtor_commission_amount: '',
                     attorney_used: false, attorney_fee: '', attorney_fee_split: false,
-                    buyer_name: deal.buyer_name || '',
+                    buyer_name: deal.buyer_name || '', buyer_company: '', buyer_partners: [],
                     agent_name: deal.agent_name || '', agent_email: deal.agent_email || '', agent_phone: deal.agent_phone || '',
                     zillow_url: deal.zillow_url || '', misc_fees: []
                   });
@@ -3955,7 +3957,7 @@ export default function MomentumApp() {
               </div>
               {currentUser?.role === 'owner' && (
                 <button 
-                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', split_type: 'percentage', split_amount: '', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '', dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '', dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '', realtor_commission_paid: false, realtor_commission_type: 'percentage', realtor_commission_percentage: '', realtor_commission_amount: '', attorney_used: false, attorney_fee: '', attorney_fee_split: false, buyer_name: ''  , agent_name: '', agent_email: '', agent_phone: '', zillow_url: '', misc_fees: [] }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
+                  onClick={() => { setShowAddDeal(true); setEditingDeal(null); setDealForm({ property_address: '', uc_price: '', sold_price: '', split_with_user_id: '', split_percentage: '50', split_type: 'percentage', split_amount: '', closed_date: getTodayInOrgTimezone(), notes: '', deal_source: 'on_market', original_list_price: '', had_price_reduction: false, original_uc_price: '', deal_type: 'wholesale', sale_price: '', commission_amount: '', list_back_secured: false, list_back_commission_pct: '', purchase_contract_url: '', assignment_contract_url: '', hud_url: '', dispo_help: false, dispo_name: '', dispo_email: '', dispo_phone: '', dispo_share_type: 'percentage', dispo_share_percentage: '', dispo_share_amount: '', realtor_commission_paid: false, realtor_commission_type: 'percentage', realtor_commission_percentage: '', realtor_commission_amount: '', attorney_used: false, attorney_fee: '', attorney_fee_split: false, buyer_name: '', buyer_company: '', buyer_partners: [], agent_name: '', agent_email: '', agent_phone: '', zillow_url: '', misc_fees: [] }); setDealFiles({ purchase_contract: null, assignment_contract: null, hud: null }); }}
                   className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg"
                 >
                   + Add Deal
@@ -4518,6 +4520,8 @@ export default function MomentumApp() {
                                     attorney_fee: deal.attorney_fee || '',
                                     attorney_fee_split: deal.attorney_fee_split || false,
                                     buyer_name: deal.buyer_name || '',
+                                    buyer_company: deal.buyer_company || '',
+                                    buyer_partners: deal.buyer_partners || [],
                                     agent_name: deal.agent_name || '',
                                     agent_email: deal.agent_email || '',
                                     agent_phone: deal.agent_phone || '',
@@ -4855,11 +4859,39 @@ export default function MomentumApp() {
                           </div>
                         )}
 
-                        {/* Buyer Name - show when no dispo help */}
+                        {/* Buyer Info - show when no dispo help */}
                         {!dealForm.dispo_help && (
-                          <div className="border-t border-slate-700 pt-4 mt-2">
-                            <label className="text-slate-400 text-xs">🏠 Buyer Name</label>
-                            <input type="text" value={dealForm.buyer_name} onChange={e => setDealForm(f => ({ ...f, buyer_name: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="End buyer name" />
+                          <div className="border-t border-slate-700 pt-4 mt-2 space-y-3">
+                            <p className="text-slate-400 text-xs font-semibold">🏠 Buyer Information</p>
+                            <div>
+                              <label className="text-slate-400 text-xs">Buyer Name</label>
+                              <input type="text" value={dealForm.buyer_name} onChange={e => setDealForm(f => ({ ...f, buyer_name: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="End buyer full name" />
+                            </div>
+                            <div>
+                              <label className="text-slate-400 text-xs">Purchased Under (LLC / Company Name)</label>
+                              <input type="text" value={dealForm.buyer_company} onChange={e => setDealForm(f => ({ ...f, buyer_company: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="e.g. Smith Holdings LLC" />
+                            </div>
+                            {/* Partners */}
+                            {(dealForm.buyer_partners || []).length > 0 && (
+                              <div className="space-y-2">
+                                <label className="text-slate-400 text-xs">Partners</label>
+                                {dealForm.buyer_partners.map((partner, idx) => (
+                                  <div key={idx} className="flex items-center gap-2">
+                                    <input type="text" value={partner} onChange={e => {
+                                      const updated = [...dealForm.buyer_partners];
+                                      updated[idx] = e.target.value;
+                                      setDealForm(f => ({ ...f, buyer_partners: updated }));
+                                    }} className="flex-1 bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-sm" placeholder={`Partner ${idx + 1} name`} />
+                                    <button onClick={() => setDealForm(f => ({ ...f, buyer_partners: f.buyer_partners.filter((_, i) => i !== idx) }))} className="text-red-400 hover:text-red-300 text-sm px-2">✕</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {(dealForm.buyer_partners || []).length < 4 && (
+                              <button onClick={() => setDealForm(f => ({ ...f, buyer_partners: [...(f.buyer_partners || []), ''] }))} className="text-xs text-blue-400 hover:text-blue-300 transition">
+                                + Add Partner
+                              </button>
+                            )}
                           </div>
                         )}
 
@@ -5336,7 +5368,9 @@ export default function MomentumApp() {
                           agent_name: dealForm.agent_name || null,
                           agent_email: dealForm.agent_email || null,
                           agent_phone: dealForm.agent_phone || null,
-                          buyer_name: dealForm.buyer_name || null
+                          buyer_name: dealForm.buyer_name || null,
+                          buyer_company: dealForm.buyer_company || null,
+                          buyer_partners: dealForm.buyer_partners?.filter(p => p.trim()) || []
                         };
 
                         if (dealForm.deal_type === 'wholesale') {
@@ -5728,6 +5762,26 @@ export default function MomentumApp() {
                         const agentKey = d.agent_name ? d.agent_name.trim().toLowerCase() : '';
                         const agentDealCount = agentKey ? (agentCounts[agentKey] || 0) : 0;
                         const agentId = d.agent_name ? btoa(encodeURIComponent(d.agent_name)) : '';
+                        
+                        // Buyer display - role-aware
+                        let buyerLine = '';
+                        if (d.dispo_help) {
+                          buyerLine = '<span style="font-size:10px;color:#fb923c;">🤝 Sold via Dispo</span><br/>';
+                        } else {
+                          const isOwner = currentUser?.role === 'owner';
+                          const co = d.buyer_company || '';
+                          const nm = d.buyer_name || '';
+                          const firstName = nm.split(' ')[0] || '';
+                          const displayName = co ? co : (isOwner ? nm : firstName);
+                          const partners = (d.buyer_partners || []).filter(p => p);
+                          if (displayName) {
+                            buyerLine = '<span style="font-size:10px;color:#fb923c;">🏠 ' + displayName;
+                            if (isOwner && partners.length > 0) {
+                              buyerLine += ' <span style="color:#94a3b8;">(+ ' + partners.length + ' partner' + (partners.length > 1 ? 's' : '') + ')</span>';
+                            }
+                            buyerLine += '</span><br/>';
+                          }
+                        }
 
                         marker.bindPopup(`
                           <div style="min-width:200px;font-family:sans-serif;">
@@ -5738,7 +5792,7 @@ export default function MomentumApp() {
                             ${soldPrice ? '<span style="font-size:12px;color:#22c55e;font-weight:600;">Sold: $' + soldPrice.toLocaleString() + '</span><br/>' : ''}
                             ${soldPrice && ucPrice ? '<span style="font-size:11px;color:#f59e0b;">Spread: $' + (soldPrice - ucPrice).toLocaleString() + '</span><br/>' : ''}
                             ${d.agent_name ? '<a href="javascript:void(0)" data-agent="' + agentId + '" onclick="window._mapFilterAgent(decodeURIComponent(atob(this.dataset.agent)))" style="font-size:10px;color:#60a5fa;text-decoration:none;cursor:pointer;">🤝 ' + d.agent_name + ' <span style="background:#e2e8f0;padding:1px 5px;border-radius:4px;font-size:9px;color:#64748b;">' + agentDealCount + '</span></a><br/>' : ''}
-                            ${d.dispo_help && d.dispo_name ? '<span style="font-size:10px;color:#fb923c;">🤝 Dispo: ' + d.dispo_name + '</span><br/>' : (d.buyer_name ? '<span style="font-size:10px;color:#fb923c;">🏠 Buyer: ' + d.buyer_name + '</span><br/>' : '')}
+                            ${buyerLine}
                             ${d.zillow_url ? '<a href="' + d.zillow_url + '" target="_blank" style="font-size:11px;color:#3b82f6;text-decoration:none;">🔗 View on Zillow →</a>' : ''}
                           </div>
                         `);
