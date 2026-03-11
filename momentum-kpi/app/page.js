@@ -203,6 +203,13 @@ const db = {
     create: (buyer) => supabaseFetch('buyers', { method: 'POST', body: [buyer] }),
     update: (buyerId, updates) => supabaseFetch(`buyers?id=eq.${buyerId}`, { method: 'PATCH', body: updates }),
     delete: (buyerId) => supabaseFetch(`buyers?id=eq.${buyerId}`, { method: 'DELETE' }),
+  },
+  terminated: {
+    getByOrg: (orgId) => supabaseFetch(`terminated_deals?organization_id=eq.${orgId}&select=*&order=terminated_date.desc`),
+    getByUser: (userId) => supabaseFetch(`terminated_deals?user_id=eq.${userId}&select=*&order=terminated_date.desc`),
+    create: (deal) => supabaseFetch('terminated_deals', { method: 'POST', body: [deal] }),
+    update: (dealId, updates) => supabaseFetch(`terminated_deals?id=eq.${dealId}`, { method: 'PATCH', body: updates }),
+    delete: (dealId) => supabaseFetch(`terminated_deals?id=eq.${dealId}`, { method: 'DELETE' }),
   }
 };
 
@@ -1309,6 +1316,7 @@ export default function MomentumApp() {
   const [pipelineDeals, setPipelineDeals] = useState([]);
   const [dealsYear, setDealsYear] = useState(new Date().getFullYear());
   const [showAddDeal, setShowAddDeal] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [editingDeal, setEditingDeal] = useState(null);
   const [showRevenueOnHome, setShowRevenueOnHome] = useState(true); // User preference for showing widget on home
   const [homeWidgetMode, setHomeWidgetMode] = useState('revenue'); // 'revenue' or 'net'
@@ -1394,6 +1402,15 @@ export default function MomentumApp() {
   const [activityFeed, setActivityFeed] = useState([]);
   const [financialGoals, setFinancialGoals] = useState([]);
   const [buyers, setBuyers] = useState([]);
+  const [terminatedDeals, setTerminatedDeals] = useState([]);
+  const [showTerminateModal, setShowTerminateModal] = useState(null); // holds deal being terminated
+  const [terminateReason, setTerminateReason] = useState('');
+  // Coach AI
+  const [coachMessages, setCoachMessages] = useState([]);
+  const [coachInput, setCoachInput] = useState('');
+  const [coachLoading, setCoachLoading] = useState(false);
+  const coachEndRef = useRef(null);
+  useEffect(() => { coachEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [coachMessages, coachLoading]);
   const [showAddBuyer, setShowAddBuyer] = useState(false);
   const [editingBuyer, setEditingBuyer] = useState(null);
   const [buyerForm, setBuyerForm] = useState({
@@ -1504,6 +1521,7 @@ export default function MomentumApp() {
       loadFinancialGoals();
       loadBuyers();
       loadAllClosedDeals();
+      loadTerminated();
       if (organization.kpi_goals) setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
     }
   }, [currentUser, organization]);
@@ -1607,6 +1625,147 @@ export default function MomentumApp() {
       const { data } = await db.buyers.getByOrg(organization.id);
       if (data) setBuyers(data);
     } catch (e) { console.log('Buyers table not ready yet'); }
+  };
+
+  const loadTerminated = async () => {
+    if (!currentUser || !organization) return;
+    try {
+      const result = currentUser.role === 'owner'
+        ? await db.terminated.getByOrg(organization.id)
+        : await db.terminated.getByUser(currentUser.id);
+      if (result.data) setTerminatedDeals(result.data);
+    } catch (e) { console.log('Terminated table not ready yet'); }
+  };
+
+  // === COACH AI FUNCTIONS ===
+  const getCoachDataSnapshot = () => {
+    const goals = getGoals();
+    const now = new Date();
+    const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+    const yearProgress = (dayOfYear / 365 * 100).toFixed(1);
+
+    // This week's KPIs (last 7 days)
+    const weekDates = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now); d.setDate(d.getDate() - i);
+      weekDates.push(d.toISOString().split('T')[0]);
+    }
+    const weeklyStats = { offers: 0, off_market: 0, calls: 0, texts: 0, contracts: 0, closed: 0 };
+    const memberWeekly = {};
+    teamMembers.forEach(u => {
+      const stats = { name: u.display_name || u.name, offers: 0, calls: 0, texts: 0 };
+      weekDates.forEach(d => {
+        const k = teamKPIs[u.id]?.[d] || {};
+        stats.offers += k.offers || 0;
+        stats.calls += k.phone_calls || 0;
+        stats.texts += (k.new_agents || 0) + (k.follow_ups || 0);
+        weeklyStats.offers += k.offers || 0;
+        weeklyStats.off_market += k.off_market_offers || 0;
+        weeklyStats.calls += k.phone_calls || 0;
+        weeklyStats.texts += (k.new_agents || 0) + (k.follow_ups || 0);
+        weeklyStats.contracts += k.deals_under_contract || 0;
+        weeklyStats.closed += k.deals_closed || 0;
+      });
+      memberWeekly[u.id] = stats;
+    });
+
+    // Revenue
+    const yearDeals = deals.filter(d => d.year === now.getFullYear());
+    const totalRevenue = yearDeals.reduce((s, d) => s + (parseFloat(d.revenue) || 0), 0);
+    const yearlyGoal = parseFloat(goals.yearly_personal_net_goal || 250000);
+
+    // Pipeline
+    const accepted = pipelineDeals.filter(d => d.stage === 'offer_accepted').length;
+    const uc = pipelineDeals.filter(d => d.stage === 'under_contract').length;
+    const closing = pipelineDeals.filter(d => d.stage === 'closing').length;
+    const pipelineValue = pipelineDeals.reduce((s, d) => s + (parseFloat(d.est_revenue || 0) || (parseFloat(d.sold_price || 0) - parseFloat(d.revised_uc_price || d.uc_price || d.accepted_price || 0))), 0);
+
+    // Stale deals (no update in 7+ days)
+    const staleDays = 7;
+    const staleDeals = pipelineDeals.filter(d => {
+      const updated = new Date(d.updated_at || d.created_at);
+      return (now - updated) / 86400000 > staleDays;
+    }).map(d => d.property_address);
+
+    // Terminated
+    const watchingCount = terminatedDeals.filter(d => d.tracker_status === 'watching').length;
+    const terminatedTotal = terminatedDeals.length;
+
+    // Team performance ranking
+    const teamRanking = Object.values(memberWeekly).sort((a, b) => b.offers - a.offers).map(m => `${m.name}: ${m.offers} offers, ${m.calls} calls, ${m.texts} texts`);
+
+    return `LIVE BUSINESS DATA (pulled ${now.toLocaleDateString()}):
+
+YEARLY PROGRESS: ${yearProgress}% through the year
+Revenue: $${totalRevenue.toLocaleString()} / $${yearlyGoal.toLocaleString()} goal (${(totalRevenue/yearlyGoal*100).toFixed(1)}%)
+Deals closed this year: ${yearDeals.length}
+Avg revenue per deal: $${yearDeals.length > 0 ? Math.round(totalRevenue / yearDeals.length).toLocaleString() : '0'}
+
+THIS WEEK (last 7 days):
+Total offers: ${weeklyStats.offers} (${(weeklyStats.offers / 7).toFixed(1)}/day avg across team)
+Off-market: ${weeklyStats.off_market}
+Phone calls: ${weeklyStats.calls}
+Texts/follow-ups: ${weeklyStats.texts}
+New contracts: ${weeklyStats.contracts}
+Deals closed: ${weeklyStats.closed}
+
+PIPELINE (${pipelineDeals.length} active):
+Accepted: ${accepted} | UC: ${uc} | Closing: ${closing}
+Est. pipeline value: $${pipelineValue.toLocaleString()}
+${staleDeals.length > 0 ? `⚠️ STALE DEALS (no update 7+ days): ${staleDeals.join(', ')}` : 'No stale deals'}
+
+TERMINATED: ${terminatedTotal} total, ${watchingCount} actively watching
+
+TEAM RANKING (this week):
+${teamRanking.join('\n')}
+
+Daily offer goal: ${goals.daily_offers || 3} per person
+Team size: ${teamMembers.length}`;
+  };
+
+  const COACH_SYSTEM_PROMPT = `You are an elite real estate wholesaling coach and accountability partner embedded in the team's KPI app. You have access to their LIVE business data. Be direct, no-nonsense, but genuinely care about their success.
+
+Your role:
+- Analyze KPI data and call out wins AND underperformance bluntly
+- Hold the team accountable with specific action items
+- Audit pipeline health and flag risks (stale deals, low conversion)
+- Push them when coasting, recognize real effort
+- Track patterns and point out trends
+
+Style:
+- Lead with the most important insight
+- Use numbers and percentages — be specific
+- Give exactly 3 action items when doing audits
+- Short punchy paragraphs, not walls of text
+- End with a challenge or accountability question
+- Never sugarcoat poor performance
+- Keep responses under 250 words unless deep audit requested`;
+
+  const sendCoachMessage = async (userMsg, isQuickAction = false) => {
+    if ((!userMsg.trim() && !isQuickAction) || coachLoading) return;
+    setCoachLoading(true);
+    const dataSnapshot = getCoachDataSnapshot();
+    const newMsg = { role: 'user', content: userMsg.trim() };
+    const updated = [...coachMessages, newMsg];
+    setCoachMessages(updated);
+    setCoachInput('');
+
+    try {
+      const response = await fetch('/api/coach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system: COACH_SYSTEM_PROMPT + '\n\n' + dataSnapshot,
+          messages: updated.slice(-10).map(m => ({ role: m.role, content: m.content }))
+        })
+      });
+      const data = await response.json();
+      const text = data.content?.filter(c => c.type === 'text').map(c => c.text).join('\n') || 'Coach is thinking...';
+      setCoachMessages(prev => [...prev, { role: 'assistant', content: text }]);
+    } catch (e) {
+      setCoachMessages(prev => [...prev, { role: 'assistant', content: 'Connection error — check network and try again.' }]);
+    }
+    setCoachLoading(false);
   };
 
   // Calculate business days between now and target date
@@ -2563,9 +2722,9 @@ export default function MomentumApp() {
           
           {/* Desktop Tabs */}
           <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-            {['personal', 'team', 'analytics', 'deals', 'goals', 'history', 'notes'].map(tab => (
+            {['personal', 'team', 'analytics', 'deals', 'goals', 'history', 'notes', ...(currentUser?.role === 'owner' ? ['coach'] : [])].map(tab => (
               <button key={tab} onClick={() => setCurrentTab(tab)} className={`px-3 py-2 rounded-lg font-semibold transition whitespace-nowrap text-sm ${currentTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
-                {tab === 'notes' ? '📝 Notes' : tab === 'deals' ? '💰 Deals' : tab === 'goals' ? '🎯 Goals' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'notes' ? '📝 Notes' : tab === 'deals' ? '💰 Deals' : tab === 'goals' ? '🎯 Goals' : tab === 'coach' ? '🔥 Coach' : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
             {currentUser?.role === 'owner' && (
@@ -2589,29 +2748,41 @@ export default function MomentumApp() {
                 key={tab.id}
                 onClick={() => {
                   if (tab.id === 'more') {
-                    // Cycle through: notes → history → admin → vip
-                    const moreTabs = ['notes', 'history', ...(currentUser?.role === 'owner' ? ['admin'] : [])];
-                    const curIdx = moreTabs.indexOf(currentTab);
-                    if (curIdx >= 0) {
-                      const nextIdx = (curIdx + 1) % moreTabs.length;
-                      setCurrentTab(moreTabs[nextIdx]);
-                    } else {
-                      setCurrentTab('notes');
-                    }
+                    setShowMoreMenu(prev => !prev);
                   } else {
                     setCurrentTab(tab.id);
+                    setShowMoreMenu(false);
                   }
                 }}
                 className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all ${
-                  (tab.id === currentTab || (tab.id === 'more' && ['history', 'admin', 'notes'].includes(currentTab)))
+                  (tab.id === currentTab || (tab.id === 'more' && ['history', 'admin', 'notes', 'coach'].includes(currentTab)))
                     ? 'text-blue-400'
                     : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
-                <span className="text-xl">{tab.id === 'more' && ['notes','history','admin'].includes(currentTab) ? {notes:'📝',history:'📜',admin:'⚙️'}[currentTab] || tab.icon : tab.icon}</span>
-                <span className="text-[10px] font-medium mt-0.5">{tab.id === 'more' && ['notes','history','admin'].includes(currentTab) ? {notes:'Notes',history:'History',admin:'Admin'}[currentTab] : tab.label}</span>
+                <span className="text-xl">{tab.id === 'more' && ['notes','history','admin','coach'].includes(currentTab) ? {notes:'📝',history:'📜',admin:'⚙️',coach:'🔥'}[currentTab] || tab.icon : tab.icon}</span>
+                <span className="text-[10px] font-medium mt-0.5">{tab.id === 'more' && ['notes','history','admin','coach'].includes(currentTab) ? {notes:'Notes',history:'History',admin:'Admin',coach:'Coach'}[currentTab] : tab.label}</span>
               </button>
             ))}
+            {/* More Menu Popup */}
+            {showMoreMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
+                <div className="absolute bottom-full right-2 mb-2 bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden z-50" style={{minWidth: '140px'}}>
+                  {[
+                    { id: 'history', icon: '📜', label: 'History' },
+                    { id: 'notes', icon: '📝', label: 'Notes' },
+                    ...(currentUser?.role === 'owner' ? [{ id: 'coach', icon: '🔥', label: 'Coach AI' }] : []),
+                    ...(currentUser?.role === 'owner' ? [{ id: 'admin', icon: '⚙️', label: 'Admin' }] : [])
+                  ].map(item => (
+                    <button key={item.id} onClick={() => { setCurrentTab(item.id); setShowMoreMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition ${currentTab === item.id ? 'bg-blue-500/10 text-blue-400' : 'text-slate-300 hover:bg-slate-700'}`}>
+                      <span className="text-lg">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
           {/* Safe area padding for iPhone */}
           <div className="h-safe-area-inset-bottom" />
@@ -3177,6 +3348,9 @@ export default function MomentumApp() {
                 <button onClick={() => setDealsView('buyers')} className={`px-4 py-2 rounded-md text-sm font-semibold transition ${dealsView === 'buyers' ? 'bg-orange-600 text-white' : 'text-slate-400 hover:text-white'}`}>
                   🏠 Buyers
                 </button>
+                <button onClick={() => setDealsView('terminated')} className={`px-4 py-2 rounded-md text-sm font-semibold transition ${dealsView === 'terminated' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                  ⛔ Terminated {terminatedDeals.filter(d => d.tracker_status === 'watching').length > 0 ? `(${terminatedDeals.filter(d => d.tracker_status === 'watching').length})` : ''}
+                </button>
               </div>
               {dealsView === 'pipeline' && (
                 <div className="flex items-center gap-1 ml-auto">
@@ -3288,6 +3462,40 @@ export default function MomentumApp() {
                 const name = currentUser.display_name || currentUser.name;
                 const stageLabels = { offer_accepted: 'Offer Accepted', under_contract: 'Under Contract', closing: 'Assigned / Closing' };
                 logActivity('pipeline_move', `${name} moved "${deal.property_address}" to ${stageLabels[newStage] || newStage}`, { address: deal.property_address, stage: newStage });
+              };
+
+              const confirmTerminate = async () => {
+                if (!showTerminateModal) return;
+                const deal = showTerminateModal;
+                const stageLabels = { offer_accepted: 'Accepted', under_contract: 'UC', closing: 'Closing' };
+                try {
+                  await db.terminated.create({
+                    organization_id: organization.id,
+                    user_id: deal.user_id || currentUser.id,
+                    property_address: deal.property_address,
+                    zillow_url: deal.zillow_url || null,
+                    original_asking_price: deal.asking_price ? parseFloat(deal.asking_price) : null,
+                    our_uc_price: parseFloat(deal.revised_uc_price || deal.uc_price || deal.accepted_price || deal.offer_amount || 0),
+                    stage_when_terminated: stageLabels[deal.stage] || deal.stage,
+                    termination_reason: terminateReason || null,
+                    terminated_date: getTodayInOrgTimezone(),
+                    agent_name: deal.agent_name || null,
+                    agent_phone: deal.agent_phone || null,
+                    tracker_status: 'watching',
+                    follow_up_days: 14,
+                    last_checked: getTodayInOrgTimezone(),
+                    note_log: deal.note_log || [],
+                    latitude: deal.latitude || null,
+                    longitude: deal.longitude || null
+                  });
+                  await db.pipeline.delete(deal.id);
+                  setPipelineDeals(prev => prev.filter(d => d.id !== deal.id));
+                  loadTerminated();
+                  const userName = currentUser.display_name || currentUser.name;
+                  logActivity('deal_terminated', `${userName} terminated "${deal.property_address}" — ${terminateReason || 'No reason given'}`, { address: deal.property_address });
+                } catch (e) { console.error('Terminate error:', e); }
+                setShowTerminateModal(null);
+                setTerminateReason('');
               };
               
               const editPipeline = (deal) => {
@@ -3581,6 +3789,9 @@ export default function MomentumApp() {
                           ← Back
                         </button>
                       )}
+                      <button onClick={() => setShowTerminateModal(deal)} className="text-[10px] py-1.5 px-2 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition ml-auto" title="Terminate Deal">
+                        ✕
+                      </button>
                     </div>
                   </div>
                 );
@@ -3588,6 +3799,35 @@ export default function MomentumApp() {
 
               return (
                 <>
+                  {/* Terminate Deal Modal */}
+                  {showTerminateModal && (
+                    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                      <div className="bg-slate-800 rounded-2xl w-full max-w-sm border border-slate-700 p-5">
+                        <h3 className="text-lg font-bold text-white mb-1">⛔ Terminate Deal</h3>
+                        <p className="text-slate-400 text-sm mb-3">{showTerminateModal.property_address}</p>
+                        <p className="text-slate-500 text-xs mb-2">This deal will move to the Terminated tracker where you can monitor what happens to it.</p>
+                        <label className="text-slate-400 text-xs">Reason for termination</label>
+                        <select value={terminateReason} onChange={e => setTerminateReason(e.target.value)} className="w-full mt-1 mb-2 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm">
+                          <option value="">Select a reason...</option>
+                          <option value="Failed inspection">Failed inspection</option>
+                          <option value="Numbers didn't work">Numbers didn't work</option>
+                          <option value="Seller backed out">Seller backed out</option>
+                          <option value="Buyer fell through">Buyer fell through</option>
+                          <option value="Title issues">Title issues</option>
+                          <option value="Better opportunity">Better opportunity</option>
+                          <option value="DD expired">DD expired</option>
+                          <option value="Other">Other</option>
+                        </select>
+                        {terminateReason === 'Other' && (
+                          <input type="text" placeholder="Specify reason..." onChange={e => setTerminateReason(e.target.value)} className="w-full mb-2 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                        )}
+                        <div className="flex gap-2 mt-3">
+                          <button onClick={() => { setShowTerminateModal(null); setTerminateReason(''); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+                          <button onClick={confirmTerminate} className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-sm font-semibold">⛔ Terminate</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {/* Pipeline Add/Edit Modal */}
                   {showAddPipeline && (
                     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
@@ -6242,6 +6482,185 @@ export default function MomentumApp() {
                 </>
               );
             })()}
+
+            {dealsView === 'terminated' && (() => {
+              const checkDue = (deal) => {
+                if (!deal.last_checked || !deal.follow_up_days) return true;
+                const lastChecked = new Date(deal.last_checked);
+                const now = new Date();
+                return Math.floor((now - lastChecked) / 86400000) >= deal.follow_up_days;
+              };
+              const updateTerminated = async (id, updates) => {
+                await db.terminated.update(id, { ...updates, updated_at: new Date().toISOString() });
+                setTerminatedDeals(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+              };
+              const watching = terminatedDeals.filter(d => d.tracker_status === 'watching' || d.tracker_status === 'relisted' || d.tracker_status === 'uc_by_others');
+              const resolved = terminatedDeals.filter(d => d.tracker_status === 'sold' || d.tracker_status === 'archived');
+
+              return (
+                <>
+                  <h2 className="text-lg font-bold text-white mb-3">⛔ Terminated Deals Tracker</h2>
+                  <p className="text-slate-500 text-xs mb-4">Monitor properties you walked away from. Track what happens next — relisted, sold, or back on market.</p>
+
+                  {watching.length === 0 && resolved.length === 0 && (
+                    <div className="bg-slate-800 rounded-xl p-8 text-center border border-slate-700">
+                      <span className="text-3xl block mb-2">👀</span>
+                      <p className="text-slate-400">No terminated deals yet</p>
+                      <p className="text-slate-600 text-xs mt-1">Terminate a pipeline deal to start tracking it here</p>
+                    </div>
+                  )}
+
+                  {/* Active Watching */}
+                  {watching.length > 0 && (
+                    <div className="space-y-3 mb-6">
+                      <p className="text-slate-400 text-xs font-semibold">👀 WATCHING ({watching.length})</p>
+                      {watching.map(deal => {
+                        const due = checkDue(deal);
+                        const statusColors = { watching: 'bg-blue-500/20 text-blue-400', relisted: 'bg-amber-500/20 text-amber-400', uc_by_others: 'bg-purple-500/20 text-purple-400' };
+                        const statusLabels = { watching: '👀 Watching', relisted: '🔄 Relisted', uc_by_others: '📝 UC by Others' };
+                        const daysSince = deal.last_checked ? Math.floor((new Date() - new Date(deal.last_checked)) / 86400000) : null;
+                        const ourPrice = parseFloat(deal.our_uc_price || 0);
+                        const newListPrice = parseFloat(deal.new_list_price || 0);
+                        const eventualSold = parseFloat(deal.eventual_sold_price || 0);
+
+                        return (
+                          <div key={deal.id} className={`bg-slate-800 rounded-xl p-4 border ${due ? 'border-amber-500/30' : 'border-slate-700/50'}`}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                {deal.zillow_url ? (
+                                  <a href={deal.zillow_url} target="_blank" rel="noopener noreferrer" className="text-white font-semibold text-sm hover:text-blue-400 transition">{deal.property_address}</a>
+                                ) : (
+                                  <p className="text-white font-semibold text-sm">{deal.property_address}</p>
+                                )}
+                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${statusColors[deal.tracker_status] || statusColors.watching}`}>
+                                    {statusLabels[deal.tracker_status] || '👀 Watching'}
+                                  </span>
+                                  <span className="text-slate-600 text-[10px]">Terminated {deal.terminated_date ? new Date(deal.terminated_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
+                                  <span className="text-slate-600 text-[10px]">· was in {deal.stage_when_terminated}</span>
+                                </div>
+                              </div>
+                              {due && (
+                                <span className="bg-amber-500/20 text-amber-400 text-[10px] px-2 py-1 rounded-md font-semibold whitespace-nowrap animate-pulse">
+                                  🔔 Check Due
+                                </span>
+                              )}
+                            </div>
+
+                            {deal.termination_reason && (
+                              <p className="text-slate-500 text-xs mt-1.5">💬 {deal.termination_reason}</p>
+                            )}
+
+                            {/* Price Comparison */}
+                            <div className="mt-2.5 bg-slate-900/50 rounded-lg p-2.5">
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="text-slate-500">Our UC:</span>
+                                <span className="text-amber-400 font-semibold">${ourPrice.toLocaleString()}</span>
+                                {deal.original_asking_price && (
+                                  <>
+                                    <span className="text-slate-600">|</span>
+                                    <span className="text-slate-500">Ask:</span>
+                                    <span className="text-slate-400">${parseFloat(deal.original_asking_price).toLocaleString()}</span>
+                                  </>
+                                )}
+                              </div>
+                              {newListPrice > 0 && (
+                                <div className="flex items-center gap-2 text-xs mt-1">
+                                  <span className="text-slate-500">New List:</span>
+                                  <span className="text-blue-400 font-semibold">${newListPrice.toLocaleString()}</span>
+                                  {ourPrice > 0 && (
+                                    <span className={`text-[10px] ${newListPrice > ourPrice ? 'text-green-400' : 'text-red-400'}`}>
+                                      ({newListPrice > ourPrice ? '+' : ''}${(newListPrice - ourPrice).toLocaleString()})
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {eventualSold > 0 && (
+                                <div className="flex items-center gap-2 text-xs mt-1">
+                                  <span className="text-slate-500">Sold For:</span>
+                                  <span className="text-green-400 font-semibold">${eventualSold.toLocaleString()}</span>
+                                  {ourPrice > 0 && (
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${eventualSold > ourPrice ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+                                      {eventualSold > ourPrice ? `😬 Lost $${(eventualSold - ourPrice).toLocaleString()}` : `✅ Bullet dodged — $${(ourPrice - eventualSold).toLocaleString()} less`}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Update Controls */}
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <select value={deal.tracker_status} onChange={e => updateTerminated(deal.id, { tracker_status: e.target.value })} className="bg-slate-700 text-white text-xs p-1.5 rounded border border-slate-600">
+                                <option value="watching">👀 Watching</option>
+                                <option value="relisted">🔄 Relisted</option>
+                                <option value="uc_by_others">📝 UC by Others</option>
+                                <option value="sold">💰 Sold</option>
+                                <option value="archived">📦 Archived</option>
+                              </select>
+                              <input type="number" placeholder="New list $" value={deal.new_list_price || ''} onChange={e => updateTerminated(deal.id, { new_list_price: e.target.value ? parseFloat(e.target.value) : null })} className="bg-slate-700 text-white text-xs p-1.5 rounded border border-slate-600 w-24" />
+                              <input type="number" placeholder="Sold for $" value={deal.eventual_sold_price || ''} onChange={e => updateTerminated(deal.id, { eventual_sold_price: e.target.value ? parseFloat(e.target.value) : null })} className="bg-slate-700 text-white text-xs p-1.5 rounded border border-slate-600 w-24" />
+                              <button onClick={() => updateTerminated(deal.id, { last_checked: getTodayInOrgTimezone() })} className="bg-blue-600/20 text-blue-400 text-[10px] px-2.5 py-1.5 rounded font-semibold hover:bg-blue-600/30 transition">
+                                ✅ Checked
+                              </button>
+                            </div>
+
+                            {/* Follow-up + Agent */}
+                            <div className="flex items-center justify-between mt-2 text-[10px] text-slate-600">
+                              <div className="flex items-center gap-2">
+                                <span>Check every</span>
+                                <select value={deal.follow_up_days || 14} onChange={e => updateTerminated(deal.id, { follow_up_days: parseInt(e.target.value) })} className="bg-slate-700 text-slate-400 text-[10px] p-0.5 rounded border border-slate-600">
+                                  <option value={7}>7d</option>
+                                  <option value={14}>14d</option>
+                                  <option value={30}>30d</option>
+                                  <option value={60}>60d</option>
+                                </select>
+                                {daysSince !== null && <span className="text-slate-600">· checked {daysSince}d ago</span>}
+                              </div>
+                              {deal.agent_name && <span className="text-slate-500">🤝 {deal.agent_name}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Resolved */}
+                  {resolved.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-slate-400 text-xs font-semibold">📦 RESOLVED ({resolved.length})</p>
+                      {resolved.map(deal => {
+                        const ourPrice = parseFloat(deal.our_uc_price || 0);
+                        const eventualSold = parseFloat(deal.eventual_sold_price || 0);
+                        return (
+                          <div key={deal.id} className="bg-slate-800/50 rounded-xl p-3 border border-slate-700/30">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-slate-400 font-semibold text-sm truncate">{deal.property_address}</p>
+                                <div className="flex items-center gap-2 mt-0.5 text-[10px]">
+                                  <span className={`px-1.5 py-0.5 rounded font-semibold ${deal.tracker_status === 'sold' ? 'bg-green-500/20 text-green-400' : 'bg-slate-600/30 text-slate-500'}`}>
+                                    {deal.tracker_status === 'sold' ? '💰 Sold' : '📦 Archived'}
+                                  </span>
+                                  {eventualSold > 0 && ourPrice > 0 && (
+                                    <span className={eventualSold > ourPrice ? 'text-red-400' : 'text-green-400'}>
+                                      {eventualSold > ourPrice ? `Lost $${(eventualSold - ourPrice).toLocaleString()}` : `Saved $${(ourPrice - eventualSold).toLocaleString()}`}
+                                    </span>
+                                  )}
+                                  <span className="text-slate-600">{deal.termination_reason}</span>
+                                </div>
+                              </div>
+                              <div className="flex gap-1">
+                                <button onClick={() => updateTerminated(deal.id, { tracker_status: 'watching' })} className="text-slate-600 hover:text-blue-400 text-xs" title="Re-watch">👀</button>
+                                <button onClick={async () => { if (confirm('Delete this terminated deal?')) { await db.terminated.delete(deal.id); setTerminatedDeals(prev => prev.filter(d => d.id !== deal.id)); } }} className="text-slate-600 hover:text-red-400 text-xs">🗑️</button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -6812,6 +7231,103 @@ export default function MomentumApp() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {currentTab === 'coach' && currentUser?.role === 'owner' && (
+          <div className="space-y-0" style={{height: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column'}}>
+            {/* Coach Header */}
+            <div className="bg-gradient-to-r from-orange-900/30 to-red-900/20 rounded-2xl md:rounded-xl p-4 border border-orange-500/20 mb-3 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">🔥 Deal Coach AI</h2>
+                  <p className="text-slate-400 text-xs mt-0.5">Your accountability partner — pulling live data from your app</p>
+                </div>
+                <button onClick={() => setCoachMessages([])} className="text-slate-600 hover:text-slate-400 text-xs px-2 py-1 rounded bg-slate-800 border border-slate-700">Clear</button>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto space-y-3 pb-4 px-1" style={{minHeight: 0}}>
+              {coachMessages.length === 0 && (
+                <div className="text-center py-8">
+                  <span className="text-4xl block mb-3">🔥</span>
+                  <p className="text-white font-bold text-lg mb-1">Let's get to work</p>
+                  <p className="text-slate-500 text-sm mb-5">I can see all your data. Ask me anything or pick a quick action.</p>
+                  <div className="grid grid-cols-2 gap-2 max-w-md mx-auto">
+                    {[
+                      { label: '📊 Weekly Audit', prompt: 'Run my full weekly audit. Analyze my numbers, team performance, pipeline health, and revenue pace. Give me 3 action items.' },
+                      { label: '🎯 Am I on track?', prompt: 'Based on my current revenue pace and yearly goal, am I on track? What needs to change?' },
+                      { label: '👥 Team Report', prompt: 'Break down each team member\'s performance this week. Who\'s crushing it, who needs a push?' },
+                      { label: '📋 Pipeline Check', prompt: 'Audit my pipeline. What deals are stale? Where am I losing deals? What needs immediate attention?' },
+                      { label: '⛔ Kill Rate', prompt: 'Review my terminated deals. What patterns do you see? How can I reduce my kill rate?' },
+                      { label: '📈 90-Day Plan', prompt: 'Based on my current numbers, give me a 90-day action plan to hit my yearly goal.' }
+                    ].map(qp => (
+                      <button key={qp.label} onClick={() => sendCoachMessage(qp.prompt, true)} className="text-left px-3 py-2.5 rounded-lg bg-slate-800 border border-slate-700 hover:border-slate-600 text-slate-400 hover:text-white text-xs font-medium transition">
+                        {qp.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {coachMessages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] px-3.5 py-2.5 text-sm leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-blue-600 text-white rounded-2xl rounded-br-sm'
+                      : 'bg-slate-800 text-slate-300 rounded-2xl rounded-bl-sm border border-slate-700'
+                  }`}>
+                    {msg.role === 'assistant' ? (
+                      <div className="space-y-1">
+                        {msg.content.split('\n').map((line, i) => {
+                          let html = line.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>');
+                          if (line.startsWith('- ')) html = '→ ' + html.slice(2);
+                          return <p key={i} className={line.trim() === '' ? 'h-2' : ''} dangerouslySetInnerHTML={{__html: html}} />;
+                        })}
+                      </div>
+                    ) : (
+                      <p>{msg.content}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {coachLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-slate-800 border border-slate-700 rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1.5">
+                    <span className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{animationDelay: '0ms'}} />
+                    <span className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{animationDelay: '150ms'}} />
+                    <span className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{animationDelay: '300ms'}} />
+                  </div>
+                </div>
+              )}
+              <div ref={coachEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="flex-shrink-0 pt-2">
+              <div className="flex gap-2 bg-slate-800 rounded-xl border border-slate-700 p-1.5 pl-4 items-center">
+                <input
+                  value={coachInput}
+                  onChange={e => setCoachInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !coachLoading && sendCoachMessage(coachInput)}
+                  placeholder="Ask your coach anything..."
+                  className="flex-1 bg-transparent text-white text-sm outline-none placeholder-slate-500"
+                />
+                <button
+                  onClick={() => sendCoachMessage(coachInput)}
+                  disabled={coachLoading || !coachInput.trim()}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                    coachLoading || !coachInput.trim()
+                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-orange-500 to-red-500 text-white hover:opacity-90 cursor-pointer'
+                  }`}
+                >
+                  Send
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
