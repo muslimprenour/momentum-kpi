@@ -210,6 +210,13 @@ const db = {
     create: (deal) => supabaseFetch('terminated_deals', { method: 'POST', body: [deal] }),
     update: (dealId, updates) => supabaseFetch(`terminated_deals?id=eq.${dealId}`, { method: 'PATCH', body: updates }),
     delete: (dealId) => supabaseFetch(`terminated_deals?id=eq.${dealId}`, { method: 'DELETE' }),
+  },
+  offerLog: {
+    getByOrg: (orgId) => supabaseFetch(`offer_log?organization_id=eq.${orgId}&select=*&order=offer_date.desc,created_at.desc`),
+    getByUser: (userId) => supabaseFetch(`offer_log?user_id=eq.${userId}&select=*&order=offer_date.desc,created_at.desc`),
+    create: (offer) => supabaseFetch('offer_log', { method: 'POST', body: [offer] }),
+    update: (offerId, updates) => supabaseFetch(`offer_log?id=eq.${offerId}`, { method: 'PATCH', body: updates }),
+    delete: (offerId) => supabaseFetch(`offer_log?id=eq.${offerId}`, { method: 'DELETE' }),
   }
 };
 
@@ -1411,6 +1418,16 @@ export default function MomentumApp() {
   const [coachLoading, setCoachLoading] = useState(false);
   const coachEndRef = useRef(null);
   useEffect(() => { coachEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [coachMessages, coachLoading]);
+  // Offer Log
+  const [offerLog, setOfferLog] = useState([]);
+  const [showAddOffer, setShowAddOffer] = useState(false);
+  const [editingOffer, setEditingOffer] = useState(null);
+  const [offerForm, setOfferForm] = useState({
+    property_address: '', mls_number: '', asking_price: '', offer_amount: '',
+    offer_date: '', is_off_market: false, agent_name: '', agent_phone: '', agent_email: '',
+    zillow_url: '', notes: '', status: 'active'
+  });
+  const [offerFilter, setOfferFilter] = useState('all'); // all, active, accepted, countered, rejected, watching, potential_deal, potential_vip
   const [showAddBuyer, setShowAddBuyer] = useState(false);
   const [editingBuyer, setEditingBuyer] = useState(null);
   const [buyerForm, setBuyerForm] = useState({
@@ -1522,6 +1539,7 @@ export default function MomentumApp() {
       loadBuyers();
       loadAllClosedDeals();
       loadTerminated();
+      loadOfferLog();
       if (organization.kpi_goals) setKpiGoals({ ...DEFAULT_KPI_GOALS, ...organization.kpi_goals });
     }
   }, [currentUser, organization]);
@@ -1637,6 +1655,16 @@ export default function MomentumApp() {
     } catch (e) { console.log('Terminated table not ready yet'); }
   };
 
+  const loadOfferLog = async () => {
+    if (!currentUser || !organization) return;
+    try {
+      const result = currentUser.role === 'owner'
+        ? await db.offerLog.getByOrg(organization.id)
+        : await db.offerLog.getByUser(currentUser.id);
+      if (result.data) setOfferLog(result.data);
+    } catch (e) { console.log('Offer log table not ready yet'); }
+  };
+
   // === COACH AI FUNCTIONS ===
   const getCoachDataSnapshot = () => {
     const goals = getGoals();
@@ -1715,6 +1743,12 @@ Est. pipeline value: $${pipelineValue.toLocaleString()}
 ${staleDeals.length > 0 ? `⚠️ STALE DEALS (no update 7+ days): ${staleDeals.join(', ')}` : 'No stale deals'}
 
 TERMINATED: ${terminatedTotal} total, ${watchingCount} actively watching
+
+OFFER LOG:
+Total offers logged: ${offerLog.length}
+Active: ${offerLog.filter(o => o.status === 'active').length} | Countered: ${offerLog.filter(o => o.status === 'countered').length} | Rejected: ${offerLog.filter(o => o.status === 'rejected').length} | Accepted: ${offerLog.filter(o => o.status === 'accepted').length}
+Watching: ${offerLog.filter(o => o.status === 'watching').length} | Potential Deals: ${offerLog.filter(o => o.status === 'potential_deal').length} | Potential VIPs: ${offerLog.filter(o => o.status === 'potential_vip').length}
+Needing follow-up (3+ days): ${offerLog.filter(o => o.status !== 'rejected' && o.status !== 'accepted' && (!o.last_followup_at || (new Date() - new Date(o.last_followup_at)) / 86400000 >= 3)).length}
 
 TEAM RANKING (this week):
 ${teamRanking.join('\n')}
@@ -3336,6 +3370,9 @@ Style:
             {/* Pipeline / Closed Toggle */}
             <div className="flex items-center gap-2">
               <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
+                <button onClick={() => setDealsView('offers')} className={`px-4 py-2 rounded-md text-sm font-semibold transition ${dealsView === 'offers' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                  📋 Offers
+                </button>
                 <button onClick={() => setDealsView('pipeline')} className={`px-4 py-2 rounded-md text-sm font-semibold transition ${dealsView === 'pipeline' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
                   📋 Pipeline
                 </button>
@@ -3371,6 +3408,278 @@ Style:
                 </div>
               )}
             </div>
+
+            {/* ======= OFFERS VIEW ======= */}
+            {dealsView === 'offers' && (() => {
+              const OFF_MARKET_KEYWORDS = ['off market', 'otto', 'otto/off market', 'otto / off market'];
+              const isOffMarket = (mls) => { if (!mls) return false; const v = mls.toLowerCase().trim(); return OFF_MARKET_KEYWORDS.some(k => v.includes(k)); };
+
+              const STATUS_CONFIG = {
+                active: { label: 'Active', color: 'bg-slate-500/20 text-slate-400', border: 'border-slate-700/50' },
+                accepted: { label: '✅ Accepted', color: 'bg-green-500/20 text-green-400', border: 'border-green-500/30' },
+                countered: { label: '🔄 Countered', color: 'bg-amber-500/20 text-amber-400', border: 'border-amber-500/30' },
+                rejected: { label: '❌ Rejected', color: 'bg-red-500/20 text-red-400', border: 'border-red-500/30' },
+                watching: { label: '👀 Watching', color: 'bg-purple-400/20 text-purple-300', border: 'border-purple-400/30' },
+                potential_deal: { label: '💎 Potential Deal', color: 'bg-cyan-500/20 text-cyan-400', border: 'border-cyan-500/30' },
+                potential_vip: { label: '⭐ Potential VIP', color: 'bg-pink-500/20 text-pink-400', border: 'border-pink-500/30' }
+              };
+
+              const saveOffer = async () => {
+                if (!offerForm.property_address || !offerForm.offer_date) return;
+                const offMarket = offerForm.is_off_market || isOffMarket(offerForm.mls_number);
+                const data = {
+                  organization_id: organization.id,
+                  user_id: currentUser.id,
+                  property_address: offerForm.property_address,
+                  mls_number: offerForm.mls_number || null,
+                  asking_price: offerForm.asking_price ? parseFloat(offerForm.asking_price) : null,
+                  offer_amount: offerForm.offer_amount ? parseFloat(offerForm.offer_amount) : null,
+                  offer_date: offerForm.offer_date,
+                  is_off_market: offMarket,
+                  status: offerForm.status || 'active',
+                  agent_name: offerForm.agent_name || null,
+                  agent_phone: offerForm.agent_phone || null,
+                  agent_email: offerForm.agent_email || null,
+                  zillow_url: offerForm.zillow_url || null,
+                  notes: offerForm.notes || null,
+                  updated_at: new Date().toISOString()
+                };
+                try {
+                  if (editingOffer) {
+                    await db.offerLog.update(editingOffer.id, data);
+                  } else {
+                    await db.offerLog.create(data);
+                  }
+                  loadOfferLog();
+                  setShowAddOffer(false);
+                  setEditingOffer(null);
+                  setOfferForm({ property_address: '', mls_number: '', asking_price: '', offer_amount: '', offer_date: getTodayInOrgTimezone(), is_off_market: false, agent_name: '', agent_phone: '', agent_email: '', zillow_url: '', notes: '', status: 'active' });
+                } catch (e) { console.error('Save offer error:', e); }
+              };
+
+              const updateOfferStatus = async (offer, newStatus) => {
+                await db.offerLog.update(offer.id, { status: newStatus, updated_at: new Date().toISOString() });
+                setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, status: newStatus } : o));
+                // If accepted → auto-create pipeline deal
+                if (newStatus === 'accepted') {
+                  const pipelineData = {
+                    organization_id: organization.id,
+                    user_id: offer.user_id || currentUser.id,
+                    property_address: offer.property_address,
+                    zillow_url: offer.zillow_url || null,
+                    asking_price: offer.asking_price || null,
+                    offer_amount: offer.offer_amount || null,
+                    offer_date: offer.offer_date,
+                    accepted_price: offer.offer_amount || null,
+                    deal_source: offer.is_off_market ? 'off_market' : 'on_market',
+                    deal_type: 'wholesale',
+                    stage: 'offer_accepted',
+                    agent_name: offer.agent_name || null,
+                    agent_email: offer.agent_email || null,
+                    agent_phone: offer.agent_phone || null,
+                    note_log: [],
+                    documents: {},
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                  };
+                  await db.pipeline.create(pipelineData);
+                  loadPipeline();
+                  logActivity('offer_accepted', `${currentUser.display_name || currentUser.name} got offer accepted on "${offer.property_address}"`, { address: offer.property_address });
+                }
+                // If potential_vip → auto-add VIP agent
+                if (newStatus === 'potential_vip' && offer.agent_name) {
+                  logActivity('potential_vip', `${currentUser.display_name || currentUser.name} flagged ${offer.agent_name} as potential VIP from "${offer.property_address}"`, { agent: offer.agent_name });
+                }
+              };
+
+              const toggleFollowUp = async (offer, type) => {
+                const now = new Date().toISOString();
+                const updates = {};
+                if (type === 'emailed') { updates.emailed = !offer.emailed; if (!offer.emailed) updates.emailed_at = now; }
+                if (type === 'texted') { updates.texted = !offer.texted; if (!offer.texted) updates.texted_at = now; }
+                if (type === 'called') { updates.called = !offer.called; if (!offer.called) updates.called_at = now; }
+                // Update last_followup_at to latest action
+                const times = [offer.emailed_at, offer.texted_at, offer.called_at, updates.emailed_at, updates.texted_at, updates.called_at].filter(Boolean);
+                if (times.length > 0) updates.last_followup_at = times.sort().reverse()[0];
+                updates.updated_at = now;
+                await db.offerLog.update(offer.id, updates);
+                setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, ...updates } : o));
+              };
+
+              // Filter
+              const filtered = offerFilter === 'all' ? offerLog : offerLog.filter(o => o.status === offerFilter);
+              const counts = {};
+              Object.keys(STATUS_CONFIG).forEach(s => { counts[s] = offerLog.filter(o => o.status === s).length; });
+
+              return (
+                <>
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-bold text-white">📋 Offer Log</h2>
+                      <span className="text-slate-500 text-xs">{offerLog.length} total</span>
+                    </div>
+                    <button onClick={() => { setShowAddOffer(true); setEditingOffer(null); setOfferForm({ property_address: '', mls_number: '', asking_price: '', offer_amount: '', offer_date: getTodayInOrgTimezone(), is_off_market: false, agent_name: '', agent_phone: '', agent_email: '', zillow_url: '', notes: '', status: 'active' }); }} className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg text-sm">
+                      + Log Offer
+                    </button>
+                  </div>
+
+                  {/* Status Filters */}
+                  <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3">
+                    <button onClick={() => setOfferFilter('all')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${offerFilter === 'all' ? 'bg-slate-600 text-white' : 'bg-slate-800 text-slate-500 hover:text-white'}`}>
+                      All ({offerLog.length})
+                    </button>
+                    {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+                      <button key={key} onClick={() => setOfferFilter(key)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${offerFilter === key ? cfg.color + ' ring-1 ring-current' : 'bg-slate-800 text-slate-500 hover:text-white'}`}>
+                        {cfg.label} {counts[key] > 0 ? `(${counts[key]})` : ''}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Offer List */}
+                  {filtered.length === 0 && (
+                    <div className="bg-slate-800 rounded-xl p-8 text-center border border-slate-700">
+                      <span className="text-3xl block mb-2">📋</span>
+                      <p className="text-slate-400">{offerFilter === 'all' ? 'No offers logged yet' : `No ${STATUS_CONFIG[offerFilter]?.label || ''} offers`}</p>
+                      <p className="text-slate-600 text-xs mt-1">Tap "+ Log Offer" to start tracking</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    {filtered.map(offer => {
+                      const cfg = STATUS_CONFIG[offer.status] || STATUS_CONFIG.active;
+                      const member = teamMembers.find(u => u.id === offer.user_id);
+                      const daysSinceFollowup = offer.last_followup_at ? Math.floor((new Date() - new Date(offer.last_followup_at)) / 86400000) : null;
+                      const needsFollowup = daysSinceFollowup === null || daysSinceFollowup >= 3;
+
+                      return (
+                        <div key={offer.id} className={`bg-slate-800 rounded-xl p-3 border ${cfg.border} transition hover:border-slate-600`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {offer.zillow_url ? (
+                                  <a href={offer.zillow_url} target="_blank" rel="noopener noreferrer" className="text-white font-semibold text-sm hover:text-blue-400 transition truncate">{offer.property_address}</a>
+                                ) : (
+                                  <p className="text-white font-semibold text-sm truncate">{offer.property_address}</p>
+                                )}
+                                {offer.is_off_market && <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-semibold">OFF-MKT</span>}
+                              </div>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${cfg.color}`}>{cfg.label}</span>
+                                <span className="text-slate-600 text-[10px]">{offer.offer_date ? new Date(offer.offer_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
+                                {offer.mls_number && !offer.is_off_market && <span className="text-slate-600 text-[10px]">MLS: {offer.mls_number}</span>}
+                                {offer.asking_price && <span className="text-slate-500 text-[10px]">Ask: ${(parseFloat(offer.asking_price)/1000).toFixed(0)}k</span>}
+                                {offer.offer_amount && <span className="text-cyan-400 text-[10px]">Offer: ${(parseFloat(offer.offer_amount)/1000).toFixed(0)}k</span>}
+                                {currentUser?.role === 'owner' && member && <span className="text-blue-400 text-[10px]">{member.avatar_emoji || '👤'} {member.display_name || member.name}</span>}
+                              </div>
+                            </div>
+
+                            {/* Status dropdown */}
+                            <select value={offer.status} onChange={e => updateOfferStatus(offer, e.target.value)} className="bg-slate-700 text-white text-[10px] p-1 rounded border border-slate-600 cursor-pointer">
+                              {Object.entries(STATUS_CONFIG).map(([key, c]) => (
+                                <option key={key} value={key}>{c.label}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Agent + Notes */}
+                          {offer.agent_name && <p className="text-slate-500 text-[10px] mt-1.5">🤝 {offer.agent_name} {offer.agent_phone ? `· ${offer.agent_phone}` : ''}</p>}
+                          {offer.notes && <p className="text-slate-600 text-[10px] mt-0.5 truncate">📝 {offer.notes}</p>}
+
+                          {/* Follow-up Row */}
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <button onClick={() => toggleFollowUp(offer, 'emailed')} className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition ${offer.emailed ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
+                              ✉️ {offer.emailed ? 'Emailed' : 'Email'}
+                              {offer.emailed_at && <span className="text-[8px] opacity-60">{new Date(offer.emailed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                            </button>
+                            <button onClick={() => toggleFollowUp(offer, 'texted')} className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition ${offer.texted ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
+                              💬 {offer.texted ? 'Texted' : 'Text'}
+                              {offer.texted_at && <span className="text-[8px] opacity-60">{new Date(offer.texted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                            </button>
+                            <button onClick={() => toggleFollowUp(offer, 'called')} className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition ${offer.called ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
+                              📞 {offer.called ? 'Called' : 'Call'}
+                              {offer.called_at && <span className="text-[8px] opacity-60">{new Date(offer.called_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                            </button>
+
+                            {needsFollowup && offer.status !== 'rejected' && offer.status !== 'accepted' && (
+                              <span className="text-[10px] text-amber-400 font-semibold animate-pulse">🔔 Follow up{daysSinceFollowup !== null ? ` (${daysSinceFollowup}d ago)` : ''}</span>
+                            )}
+
+                            <div className="ml-auto flex gap-1">
+                              <button onClick={() => { setEditingOffer(offer); setOfferForm({ property_address: offer.property_address || '', mls_number: offer.mls_number || '', asking_price: offer.asking_price || '', offer_amount: offer.offer_amount || '', offer_date: offer.offer_date || '', is_off_market: offer.is_off_market || false, agent_name: offer.agent_name || '', agent_phone: offer.agent_phone || '', agent_email: offer.agent_email || '', zillow_url: offer.zillow_url || '', notes: offer.notes || '', status: offer.status || 'active' }); setShowAddOffer(true); }} className="text-slate-600 hover:text-white text-xs">✏️</button>
+                              <button onClick={async () => { if (confirm('Delete this offer?')) { await db.offerLog.delete(offer.id); setOfferLog(prev => prev.filter(o => o.id !== offer.id)); }}} className="text-slate-600 hover:text-red-400 text-xs">🗑️</button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Add/Edit Offer Modal */}
+                  {showAddOffer && (
+                    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+                      <div className="bg-slate-800 rounded-2xl w-full max-w-md border border-slate-700 max-h-[90vh] flex flex-col">
+                        <div className="flex justify-between items-center p-5 pb-3 border-b border-slate-700">
+                          <h3 className="text-lg font-bold text-white">{editingOffer ? 'Edit Offer' : 'Log New Offer'}</h3>
+                          <button onClick={() => { setShowAddOffer(false); setEditingOffer(null); }} className="text-slate-400 hover:text-white text-2xl">×</button>
+                        </div>
+                        <div className="p-5 space-y-3 overflow-y-auto flex-1">
+                          <div>
+                            <label className="text-slate-400 text-xs">Property Address *</label>
+                            <input type="text" value={offerForm.property_address} onChange={e => setOfferForm(f => ({ ...f, property_address: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="123 Main St, City, NJ" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-slate-400 text-xs">MLS #</label>
+                              <input type="text" value={offerForm.mls_number} onChange={e => { const v = e.target.value; setOfferForm(f => ({ ...f, mls_number: v, is_off_market: isOffMarket(v) || f.is_off_market })); }} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="MLS # or 'off market'" />
+                            </div>
+                            <div>
+                              <label className="text-slate-400 text-xs">Offer Date *</label>
+                              <input type="date" value={offerForm.offer_date} onChange={e => setOfferForm(f => ({ ...f, offer_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-slate-400 text-xs">Asking Price</label>
+                              <input type="number" value={offerForm.asking_price} onChange={e => setOfferForm(f => ({ ...f, asking_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="$0" />
+                            </div>
+                            <div>
+                              <label className="text-slate-400 text-xs">Offer Amount</label>
+                              <input type="number" value={offerForm.offer_amount} onChange={e => setOfferForm(f => ({ ...f, offer_amount: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="$0" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-slate-400 text-xs">Zillow Link</label>
+                            <input type="url" value={offerForm.zillow_url} onChange={e => setOfferForm(f => ({ ...f, zillow_url: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="https://zillow.com/..." />
+                          </div>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={offerForm.is_off_market} onChange={e => setOfferForm(f => ({ ...f, is_off_market: e.target.checked }))} className="w-4 h-4 rounded" />
+                            <span className="text-slate-300 text-sm">🔥 Off-Market Deal</span>
+                          </label>
+                          {/* Agent info */}
+                          <div className="border-t border-slate-700 pt-3 mt-1">
+                            <p className="text-slate-400 text-xs font-semibold mb-2">🤝 Agent Info</p>
+                            <input type="text" value={offerForm.agent_name} onChange={e => setOfferForm(f => ({ ...f, agent_name: e.target.value }))} className="w-full bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm mb-2" placeholder="Agent name" />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input type="tel" value={offerForm.agent_phone} onChange={e => setOfferForm(f => ({ ...f, agent_phone: e.target.value }))} className="w-full bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Phone" />
+                              <input type="email" value={offerForm.agent_email} onChange={e => setOfferForm(f => ({ ...f, agent_email: e.target.value }))} className="w-full bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Email" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-slate-400 text-xs">Notes</label>
+                            <input type="text" value={offerForm.notes} onChange={e => setOfferForm(f => ({ ...f, notes: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Quick note..." />
+                          </div>
+                        </div>
+                        <div className="p-5 pt-3 border-t border-slate-700 flex gap-2">
+                          <button onClick={() => { setShowAddOffer(false); setEditingOffer(null); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
+                          <button onClick={saveOffer} className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white py-2.5 rounded-lg text-sm font-semibold">{editingOffer ? 'Update' : 'Log Offer'}</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             {/* ======= PIPELINE VIEW ======= */}
             {dealsView === 'pipeline' && (() => {
@@ -3790,7 +4099,7 @@ Style:
                         </button>
                       )}
                       <button onClick={() => setShowTerminateModal(deal)} className="text-[10px] py-1.5 px-2 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition ml-auto" title="Terminate Deal">
-                        ✕
+                        ⛔ Kill
                       </button>
                     </div>
                   </div>
@@ -3840,8 +4149,17 @@ Style:
                           {/* Stage */}
                           <div>
                             <label className="text-slate-400 text-xs">Stage</label>
-                            <select value={pipelineForm.stage} onChange={e => setPipelineForm(f => ({ ...f, stage: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm">
+                            <select value={pipelineForm.stage} onChange={e => {
+                              if (e.target.value === 'terminated' && editingPipeline) {
+                                setShowTerminateModal(editingPipeline);
+                                setShowAddPipeline(false);
+                                setEditingPipeline(null);
+                              } else {
+                                setPipelineForm(f => ({ ...f, stage: e.target.value }));
+                              }
+                            }} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm">
                               {STAGES.map(s => <option key={s.key} value={s.key}>{s.icon} {s.label}</option>)}
+                              {editingPipeline && <option value="terminated">⛔ Terminated</option>}
                             </select>
                           </div>
                           {/* Address */}
@@ -4254,6 +4572,7 @@ Style:
                                   {deal.stage === 'offer_accepted' && !deal.ar_complete && <button onClick={() => toggleAR(deal)} className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400">✅ AR</button>}
                                   {deal.stage === 'under_contract' && <button onClick={() => moveStage(deal, 'closing')} className="text-[10px] px-2 py-1 rounded bg-green-500/20 text-green-400">🏁 Closing</button>}
                                   {deal.stage === 'closing' && <button onClick={() => moveStage(deal, 'closed')} className="text-[10px] px-2 py-1 rounded bg-green-500/20 text-green-400">✅ Close</button>}
+                                  <button onClick={() => setShowTerminateModal(deal)} className="text-[10px] px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20">⛔</button>
                                   <button onClick={() => editPipeline(deal)} className="text-slate-500 hover:text-white text-xs p-1">✏️</button>
                                   <button onClick={() => deletePipeline(deal)} className="text-slate-500 hover:text-red-400 text-xs p-1">🗑️</button>
                                 </div>
