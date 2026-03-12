@@ -1431,7 +1431,8 @@ export default function MomentumApp() {
     response: ''
   });
   const [offerFilter, setOfferFilter] = useState('all');
-  const [offerSearch, setOfferSearch] = useState(''); // all, active, accepted, countered, rejected, watching, potential_deal, potential_vip
+  const [offerSearch, setOfferSearch] = useState('');
+  const [showTerminatedOnMap, setShowTerminatedOnMap] = useState(false); // all, active, accepted, countered, rejected, watching, potential_deal, potential_vip
   const [showAddBuyer, setShowAddBuyer] = useState(false);
   const [editingBuyer, setEditingBuyer] = useState(null);
   const [buyerForm, setBuyerForm] = useState({
@@ -6286,19 +6287,21 @@ Style:
             {/* ======= MAP VIEW ======= */}
             {dealsView === 'map' && (() => {
               const STAGE_COLORS = {
-                offer_accepted: '#a855f7', under_contract: '#f59e0b', closing: '#22c55e'
+                offer_accepted: '#a855f7', under_contract: '#f59e0b', closing: '#22c55e', terminated: '#ef4444'
               };
               const allMapDeals = [
                 ...pipelineDeals.map(d => ({ ...d, _type: 'pipeline' })),
-                ...allClosedDeals.map(d => ({ ...d, _type: 'closed', stage: 'closed' }))
+                ...allClosedDeals.map(d => ({ ...d, _type: 'closed', stage: 'closed' })),
+                ...(showTerminatedOnMap ? terminatedDeals.map(d => ({ ...d, _type: 'terminated' })) : [])
               ].filter(d => d.latitude && d.longitude);
 
               const geocodeAll = async () => {
                 const pipelineToGeo = pipelineDeals.filter(d => !d.latitude && d.property_address);
                 const closedToGeo = allClosedDeals.filter(d => !d.latitude && d.property_address);
-                const total = pipelineToGeo.length + closedToGeo.length;
+                const terminatedToGeo = terminatedDeals.filter(d => !d.latitude && d.property_address);
+                const total = pipelineToGeo.length + closedToGeo.length + terminatedToGeo.length;
                 if (total === 0) { alert('All deals already have coordinates!'); return; }
-                if (!confirm(`Geocode ${total} deals? (${pipelineToGeo.length} pipeline + ${closedToGeo.length} closed)\nThis may take ~${total} seconds.`)) return;
+                if (!confirm(`Geocode ${total} deals? (${pipelineToGeo.length} pipeline + ${closedToGeo.length} closed + ${terminatedToGeo.length} terminated)\nThis may take ~${total} seconds.`)) return;
                 let count = 0;
                 for (const deal of pipelineToGeo) {
                   const coords = await geocodeAddress(deal.property_address);
@@ -6318,6 +6321,15 @@ Style:
                   }
                   await new Promise(r => setTimeout(r, 1100));
                 }
+                for (const deal of terminatedToGeo) {
+                  const coords = await geocodeAddress(deal.property_address);
+                  if (coords) {
+                    await db.terminated.update(deal.id, coords);
+                    setTerminatedDeals(prev => prev.map(d => d.id === deal.id ? { ...d, ...coords } : d));
+                    count++;
+                  }
+                  await new Promise(r => setTimeout(r, 1100));
+                }
                 alert(`Geocoded ${count}/${total} deals`);
               };
 
@@ -6329,12 +6341,15 @@ Style:
                       <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> UC ({pipelineDeals.filter(d => d.stage === 'under_contract' && d.latitude).length})</span>
                       <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> Closing ({pipelineDeals.filter(d => d.stage === 'closing' && d.latitude).length})</span>
                       <span className="flex items-center gap-1 text-xs"><span className="w-2.5 h-2.5 rounded-full bg-slate-500 inline-block" /> Closed ({allClosedDeals.filter(d => d.latitude).length})</span>
+                      <button onClick={() => setShowTerminatedOnMap(prev => !prev)} className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition ${showTerminatedOnMap ? 'bg-red-500/20 text-red-400 ring-1 ring-red-500/30' : 'bg-slate-800 text-slate-500 hover:text-slate-300'}`}>
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> Terminated ({terminatedDeals.filter(d => d.latitude).length})
+                      </button>
                     </div>
                     <button onClick={geocodeAll} className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg">
-                      📍 Geocode All ({pipelineDeals.filter(d => !d.latitude && d.property_address).length + allClosedDeals.filter(d => !d.latitude && d.property_address).length} pending)
+                      📍 Geocode All ({pipelineDeals.filter(d => !d.latitude && d.property_address).length + allClosedDeals.filter(d => !d.latitude && d.property_address).length + terminatedDeals.filter(d => !d.latitude && d.property_address).length} pending)
                     </button>
                   </div>
-                  <div id="deal-map" className="w-full h-[500px] rounded-xl border border-slate-700 bg-slate-800 overflow-hidden" ref={el => {
+                  <div id="deal-map" key={`map-${showTerminatedOnMap}`} className="w-full h-[500px] rounded-xl border border-slate-700 bg-slate-800 overflow-hidden" ref={el => {
                     if (!el || el._leafletInit) return;
                     el._leafletInit = true;
                     // Load Leaflet
@@ -6367,7 +6382,8 @@ Style:
 
                       const allDeals = [
                         ...pipelineDeals.map(d => ({ ...d, _type: 'pipeline' })),
-                        ...allClosedDeals.filter(d => d.latitude && d.longitude).map(d => ({ ...d, _type: 'closed', stage: 'closed' }))
+                        ...allClosedDeals.filter(d => d.latitude && d.longitude).map(d => ({ ...d, _type: 'closed', stage: 'closed' })),
+                        ...(showTerminatedOnMap ? terminatedDeals.filter(d => d.latitude && d.longitude).map(d => ({ ...d, _type: 'terminated', stage: 'terminated', property_address: d.property_address, asking_price: d.original_asking_price, uc_price: d.our_uc_price })) : [])
                       ];
 
                       // Pre-compute agent deal counts across ALL deals
@@ -6432,10 +6448,10 @@ Style:
                         marker._dealAgent = d.agent_name || '';
                         el._markers.push(marker);
 
-                        const stageLabel = d.stage === 'closed' ? 'Closed' : d.stage === 'offer_accepted' ? 'Offer Accepted' : d.stage === 'under_contract' ? 'Under Contract' : 'Closing';
-                        const closedDate = d.closed_date ? new Date(d.closed_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-                        const listPrice = parseFloat(d.original_list_price || d.asking_price || 0);
-                        const ucPrice = parseFloat(d.revised_uc_price || d.uc_price || 0);
+                        const stageLabel = d.stage === 'closed' ? 'Closed' : d.stage === 'terminated' ? '⛔ Terminated' : d.stage === 'offer_accepted' ? 'Offer Accepted' : d.stage === 'under_contract' ? 'Under Contract' : 'Closing';
+                        const closedDate = d.closed_date ? new Date(d.closed_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : (d.terminated_date ? new Date(d.terminated_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '');
+                        const listPrice = parseFloat(d.original_list_price || d.asking_price || d.original_asking_price || 0);
+                        const ucPrice = parseFloat(d.revised_uc_price || d.uc_price || d.our_uc_price || 0);
                         const soldPrice = parseFloat(d.sold_price || 0);
                         const agentKey = d.agent_name ? d.agent_name.trim().toLowerCase() : '';
                         const agentDealCount = agentKey ? (agentCounts[agentKey] || 0) : 0;
@@ -6477,6 +6493,9 @@ Style:
                             ${soldPrice && ucPrice ? '<span style="font-size:11px;color:#f59e0b;">Spread: $' + (soldPrice - ucPrice).toLocaleString() + '</span><br/>' : ''}
                             ${d.agent_name ? '<a href="javascript:void(0)" data-agent="' + agentId + '" onclick="window._mapFilterAgent(decodeURIComponent(atob(this.dataset.agent)))" style="font-size:10px;color:#60a5fa;text-decoration:none;cursor:pointer;">🤝 ' + d.agent_name + ' <span style="background:#e2e8f0;padding:1px 5px;border-radius:4px;font-size:9px;color:#64748b;">' + agentDealCount + '</span></a><br/>' : ''}
                             ${buyerLine}
+                            ${d._type === 'terminated' && d.termination_reason ? '<span style="font-size:10px;color:#f87171;">💬 ' + d.termination_reason + '</span><br/>' : ''}
+                            ${d._type === 'terminated' && d.tracker_status ? '<span style="font-size:10px;color:#94a3b8;">Status: ' + ({watching:'👀 Watching',relisted:'🔄 Relisted',uc_by_others:'📝 UC by Others',sold:'💰 Sold',archived:'📦 Archived'}[d.tracker_status] || d.tracker_status) + '</span><br/>' : ''}
+                            ${d._type === 'terminated' && d.eventual_sold_price ? '<span style="font-size:10px;color:#22c55e;">Eventually sold: $' + parseFloat(d.eventual_sold_price).toLocaleString() + '</span>' + (ucPrice ? ' <span style="font-size:9px;color:' + (parseFloat(d.eventual_sold_price) > ucPrice ? '#f87171' : '#22c55e') + ';">(' + (parseFloat(d.eventual_sold_price) > ucPrice ? 'Lost $' + (parseFloat(d.eventual_sold_price) - ucPrice).toLocaleString() : 'Saved $' + (ucPrice - parseFloat(d.eventual_sold_price)).toLocaleString()) + ')</span>' : '') + '<br/>' : ''}
                             ${d.zillow_url ? '<a href="' + d.zillow_url + '" target="_blank" style="font-size:11px;color:#3b82f6;text-decoration:none;">🔗 View on Zillow →</a>' : ''}
                           </div>
                         `);
