@@ -2439,10 +2439,22 @@ Style:
         d.stage === 'closing' && d.buyer_emd_submitted && d.closer_user_id === user.id
       ).length;
 
-      // Closed deals (400 pts) → BOTH sourcer AND closer
-      const yearDeals = deals.filter(d => d.year === new Date().getFullYear());
-      const closedAsSourcer = yearDeals.filter(d => d.user_id === user.id).length;
-      const closedAsCloser = yearDeals.filter(d => d.split_with_user_id === user.id).length;
+      // Closed deals (400 pts) → BOTH sourcer AND closer — filtered by period
+      const now = new Date();
+      let periodStart;
+      if (period === 'week') {
+        periodStart = new Date(now);
+        const day = periodStart.getDay();
+        const diff = day === 0 ? 6 : day - 1; // Monday = 0 offset
+        periodStart.setDate(periodStart.getDate() - diff);
+        periodStart.setHours(0, 0, 0, 0);
+      } else {
+        periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      }
+      const periodStartStr = periodStart.toISOString().split('T')[0];
+      const periodDeals = deals.filter(d => d.closed_date && d.closed_date >= periodStartStr);
+      const closedAsSourcer = periodDeals.filter(d => d.user_id === user.id).length;
+      const closedAsCloser = periodDeals.filter(d => d.split_with_user_id === user.id).length;
       const closedTotal = closedAsSourcer + closedAsCloser;
 
       const ucPts = sourcedUC * 200;
