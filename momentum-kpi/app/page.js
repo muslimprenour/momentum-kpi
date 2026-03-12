@@ -1430,7 +1430,8 @@ export default function MomentumApp() {
     second_offer: false, second_offer_note: '',
     response: ''
   });
-  const [offerFilter, setOfferFilter] = useState('all'); // all, active, accepted, countered, rejected, watching, potential_deal, potential_vip
+  const [offerFilter, setOfferFilter] = useState('all');
+  const [offerSearch, setOfferSearch] = useState(''); // all, active, accepted, countered, rejected, watching, potential_deal, potential_vip
   const [showAddBuyer, setShowAddBuyer] = useState(false);
   const [editingBuyer, setEditingBuyer] = useState(null);
   const [buyerForm, setBuyerForm] = useState({
@@ -3416,7 +3417,6 @@ Style:
             {dealsView === 'offers' && (() => {
               const OFF_MARKET_KEYWORDS = ['off market', 'otto', 'otto/off market', 'otto / off market'];
               const isOffMarket = (mls) => { if (!mls) return false; const v = mls.toLowerCase().trim(); return OFF_MARKET_KEYWORDS.some(k => v.includes(k)); };
-              const [offerSearch, setOfferSearch] = React.useState('');
 
               const STATUS_CONFIG = {
                 active: { label: 'Active', bg: 'bg-slate-800', text: 'text-slate-400', dot: '#64748b' },
