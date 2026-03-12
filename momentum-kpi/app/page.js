@@ -1401,7 +1401,7 @@ export default function MomentumApp() {
     dd_type: 'calendar',
     dd_days: '',
     note_log: [],
-    buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '',
+    buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '', closer_user_id: '',
     documents: { psa: false, ar_addendum: false, assignment: false, hud: false },
     psa_url: '', ar_addendum_url: '', assignment_url: '', hud_url: ''
   });
@@ -2426,12 +2426,35 @@ Style:
       const s = getStats(user.id, period);
       const regularOffers = s.offers - (s.off_market || 0);
       const offMarketOffers = s.off_market || 0;
-      // UC count from live pipeline instead of manual KPI
-      const ucCount = getPipelineCount(user.id, 'under_contract');
-      const closingCount = getPipelineCount(user.id, 'closing');
-      const liveUC = ucCount + closingCount;
-      const score = (regularOffers * 1) + (offMarketOffers * 10) + (s.texts * 0.10) + (s.calls * 1) + (liveUC * 200) + (s.closed * 400);
-      return { user, stats: { ...s, liveUC, ucCount, closingCount }, score: Math.round(score) };
+
+      // === ROLE-BASED PIPELINE POINTS ===
+      // UC (200 pts) → deal SOURCER only (must have sourced_by_user_id set)
+      const sourcedUC = pipelineDeals.filter(d =>
+        (d.stage === 'under_contract' || d.stage === 'closing') &&
+        d.sourced_by_user_id === user.id
+      ).length;
+
+      // Buyer Secured/EMD (150 pts) → CLOSER only (closer_user_id on the deal)
+      const buyerSecured = pipelineDeals.filter(d =>
+        d.stage === 'closing' && d.buyer_emd_submitted && d.closer_user_id === user.id
+      ).length;
+
+      // Closed deals (400 pts) → BOTH sourcer AND closer
+      const yearDeals = deals.filter(d => d.year === new Date().getFullYear());
+      const closedAsSourcer = yearDeals.filter(d => d.user_id === user.id).length;
+      const closedAsCloser = yearDeals.filter(d => d.split_with_user_id === user.id).length;
+      const closedTotal = closedAsSourcer + closedAsCloser;
+
+      const ucPts = sourcedUC * 200;
+      const emdPts = buyerSecured * 150;
+      const closePts = closedTotal * 400;
+
+      const score = (regularOffers * 1) + (offMarketOffers * 10) + (s.texts * 0.10) + (s.calls * 1) + ucPts + emdPts + closePts;
+      return {
+        user,
+        stats: { ...s, sourcedUC, buyerSecured, closedTotal, ucPts, emdPts, closePts },
+        score: Math.round(score)
+      };
     }).sort((a, b) => b.score - a.score);
   };
 
@@ -3366,7 +3389,7 @@ Style:
                             <span className="text-orange-400 text-xs font-medium">🔥{memberStreak.current}</span>
                           )}
                         </div>
-                        <p className="text-slate-400 text-xs">Offers: {e.stats.offers}{e.stats.off_market > 0 && <span className="text-purple-400"> ({e.stats.off_market} off-mkt)</span>} | Texts: {e.stats.texts} | Calls: {e.stats.calls}{e.stats.liveUC > 0 && <span className="text-amber-400"> | 📝 {e.stats.liveUC} UC</span>}</p>
+                        <p className="text-slate-400 text-xs">Offers: {e.stats.offers}{e.stats.off_market > 0 && <span className="text-purple-400"> ({e.stats.off_market} off-mkt)</span>} | Texts: {e.stats.texts} | Calls: {e.stats.calls}{e.stats.sourcedUC > 0 && <span className="text-amber-400"> | 📝 {e.stats.sourcedUC} UC</span>}{e.stats.buyerSecured > 0 && <span className="text-green-400"> | 🤝 {e.stats.buyerSecured} EMD</span>}{e.stats.closedTotal > 0 && <span className="text-emerald-400"> | ✅ {e.stats.closedTotal} Closed</span>}</p>
                       </div>
                       <div className="hidden sm:block">
                         <Sparkline data={memberOffersTrend} color="#eab308" width={60} height={24} />
@@ -3454,7 +3477,7 @@ Style:
                     </button>
                   </div>
                   <button
-                    onClick={() => { setShowAddPipeline(true); setEditingPipeline(null); setPipelineForm({ property_address: '', zillow_url: '', asking_price: '', deal_source: 'on_market', deal_type: 'wholesale', offer_amount: '', offer_date: '', accepted_price: '', uc_price: '', uc_date: '', inspection_date: '', est_close_date: '', est_revenue: '', sold_price: '', agent_name: '', agent_email: '', agent_phone: '', stage: 'offer_accepted', notes: '', sourced_by_user_id: '', ar_complete: false, ar_complete_date: '', had_price_reduction: false, revised_uc_price: '', dd_type: 'calendar', dd_days: '', note_log: [], buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '', documents: { psa: false, ar_addendum: false, assignment: false, hud: false }, psa_url: '', ar_addendum_url: '', assignment_url: '', hud_url: '' }); setPipelineFiles({ psa: null, ar_addendum: null, assignment: null, hud: null }); }}
+                    onClick={() => { setShowAddPipeline(true); setEditingPipeline(null); setPipelineForm({ property_address: '', zillow_url: '', asking_price: '', deal_source: 'on_market', deal_type: 'wholesale', offer_amount: '', offer_date: '', accepted_price: '', uc_price: '', uc_date: '', inspection_date: '', est_close_date: '', est_revenue: '', sold_price: '', agent_name: '', agent_email: '', agent_phone: '', stage: 'offer_accepted', notes: '', sourced_by_user_id: '', ar_complete: false, ar_complete_date: '', had_price_reduction: false, revised_uc_price: '', dd_type: 'calendar', dd_days: '', note_log: [], buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '', closer_user_id: '', documents: { psa: false, ar_addendum: false, assignment: false, hud: false }, psa_url: '', ar_addendum_url: '', assignment_url: '', hud_url: '' }); setPipelineFiles({ psa: null, ar_addendum: null, assignment: null, hud: null }); }}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-sm"
                   >
                     + Add Deal
@@ -3818,7 +3841,7 @@ Style:
                     property_address: deal.property_address || '',
                     uc_price: deal.revised_uc_price || deal.uc_price || deal.accepted_price || deal.offer_amount || '',
                     sold_price: deal.sold_price || '',
-                    split_with_user_id: deal.sourced_by_user_id || '',
+                    split_with_user_id: deal.closer_user_id || deal.sourced_by_user_id || '',
                     split_percentage: '50', split_type: 'percentage', split_amount: '',
                     closed_date: getTodayInOrgTimezone(),
                     notes: (deal.note_log || []).length > 0 ? deal.note_log.map(n => `[${n.stage} ${new Date(n.timestamp).toLocaleDateString()}] ${n.text}`).join('\n') : (deal.notes || ''),
@@ -3899,7 +3922,7 @@ Style:
                   sourced_by_user_id: deal.sourced_by_user_id || '',
                   ar_complete: deal.ar_complete || false, ar_complete_date: deal.ar_complete_date || '',
                   buyer_name: deal.buyer_name || '', buyer_emd_submitted: deal.buyer_emd_submitted || false,
-                  buyer_emd_amount: deal.buyer_emd_amount || '',
+                  buyer_emd_amount: deal.buyer_emd_amount || '', closer_user_id: deal.closer_user_id || '',
                   had_price_reduction: deal.had_price_reduction || false, revised_uc_price: deal.revised_uc_price || '',
                   dd_type: deal.dd_type || 'calendar', dd_days: deal.dd_days || '', note_log: deal.note_log || [],
                   documents: deal.documents || { psa: false, ar_addendum: false, assignment: false, hud: false },
@@ -3947,6 +3970,7 @@ Style:
                   buyer_name: pipelineForm.buyer_name || null,
                   buyer_emd_submitted: pipelineForm.buyer_emd_submitted || false,
                   buyer_emd_amount: pipelineForm.buyer_emd_amount ? parseFloat(pipelineForm.buyer_emd_amount) : null,
+                  closer_user_id: pipelineForm.closer_user_id || null,
                   had_price_reduction: pipelineForm.had_price_reduction || false,
                   revised_uc_price: pipelineForm.revised_uc_price ? parseFloat(pipelineForm.revised_uc_price) : null,
                   dd_type: pipelineForm.dd_type || 'calendar',
@@ -4102,6 +4126,7 @@ Style:
                             {deal.buyer_name && (
                               <p className="text-slate-400 text-[10px]">🏠 Buyer: {deal.buyer_name}</p>
                             )}
+                            {deal.closer_user_id && (() => { const closer = teamMembers.find(m => m.id === deal.closer_user_id); return closer ? <p className="text-cyan-400 text-[10px]">🤝 Closer: {closer.display_name || closer.name}</p> : null; })()}
                             <button onClick={() => toggleBuyerEMD(deal)} className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md transition w-full text-left ${deal.buyer_emd_submitted ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
                               {deal.buyer_emd_submitted ? '✅' : '⬜'} Buyer EMD {deal.buyer_emd_amount ? `$${parseFloat(deal.buyer_emd_amount).toLocaleString()}` : ''}
                             </button>
@@ -4428,6 +4453,15 @@ Style:
                             <>
                               <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-3 space-y-3">
                                 <p className="text-green-400 text-xs font-semibold">🏁 Closing Details</p>
+                                <div>
+                                  <label className="text-slate-400 text-xs">🤝 Assigned Closer / Dispo</label>
+                                  <select value={pipelineForm.closer_user_id} onChange={e => setPipelineForm(f => ({ ...f, closer_user_id: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm">
+                                    <option value="">— Select who's closing this deal —</option>
+                                    {teamMembers.map(m => (
+                                      <option key={m.id} value={m.id}>{m.display_name || m.name}{m.id === currentUser?.id ? ' (me)' : ''}</option>
+                                    ))}
+                                  </select>
+                                </div>
                                 <div>
                                   <label className="text-slate-400 text-xs">Buyer Name</label>
                                   <div className="relative">
