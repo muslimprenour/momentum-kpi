@@ -3540,213 +3540,164 @@ Style:
                     ))}
                   </div>
 
-                  {/* Spreadsheet Table */}
-                  {filtered.length === 0 ? (
-                    <div className="bg-slate-800 rounded-xl p-8 text-center border border-slate-700">
-                      <span className="text-3xl block mb-2">📋</span>
-                      <p className="text-slate-400">{offerFilter === 'all' ? 'No offers logged yet' : `No ${STATUS_CONFIG[offerFilter]?.label} offers`}</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto rounded-xl border border-slate-700">
-                      <table className="w-full text-xs" style={{minWidth: '1100px'}}>
-                        <thead>
-                          <tr className="bg-slate-800/80 text-slate-400 text-[10px] uppercase tracking-wider">
-                            <th className="text-left p-2 pl-3 font-semibold sticky left-0 bg-slate-800/80 z-10">Status</th>
-                            <th className="text-left p-2 font-semibold">Date</th>
-                            <th className="text-left p-2 font-semibold">Address</th>
-                            <th className="text-left p-2 font-semibold">MLS</th>
-                            <th className="text-right p-2 font-semibold">List $</th>
-                            <th className="text-right p-2 font-semibold">ARV</th>
-                            <th className="text-right p-2 font-semibold" title="70% of List">70% List</th>
-                            <th className="text-right p-2 font-semibold" title="70% of ARV">70% ARV</th>
-                            <th className="text-right p-2 font-semibold" title="75% of ARV">75% ARV</th>
-                            <th className="text-right p-2 font-semibold">Offer $</th>
-                            <th className="text-center p-2 font-semibold">Sent?</th>
-                            <th className="text-center p-2 font-semibold">2nd Offer</th>
-                            <th className="text-left p-2 font-semibold">Response</th>
-                            <th className="text-center p-2 font-semibold">Follow-up</th>
-                            <th className="text-left p-2 font-semibold">Agent</th>
-                            {currentUser?.role === 'owner' && <th className="text-left p-2 font-semibold">Rep</th>}
-                            <th className="text-center p-2 font-semibold">Actions</th>
+                                    {/* Spreadsheet Table — always visible with inline add row */}
+                  <div className="overflow-x-auto rounded-xl border border-slate-700">
+                    <table className="w-full text-xs" style={{minWidth: '1100px'}}>
+                      <thead>
+                        <tr className="bg-slate-800/80 text-slate-400 text-[10px] uppercase tracking-wider">
+                          <th className="text-left p-2 pl-3 font-semibold sticky left-0 bg-slate-800/80 z-10">Status</th>
+                          <th className="text-left p-2 font-semibold">Date</th>
+                          <th className="text-left p-2 font-semibold">Address</th>
+                          <th className="text-left p-2 font-semibold">MLS</th>
+                          <th className="text-right p-2 font-semibold">List $</th>
+                          <th className="text-right p-2 font-semibold">ARV</th>
+                          <th className="text-right p-2 font-semibold" title="70% of List">70% List</th>
+                          <th className="text-right p-2 font-semibold" title="70% of ARV">70% ARV</th>
+                          <th className="text-right p-2 font-semibold" title="75% of ARV">75% ARV</th>
+                          <th className="text-right p-2 font-semibold">Offer $</th>
+                          <th className="text-center p-2 font-semibold">Sent?</th>
+                          <th className="text-center p-2 font-semibold">2nd Offer</th>
+                          <th className="text-left p-2 font-semibold">Response</th>
+                          <th className="text-center p-2 font-semibold">Follow-up</th>
+                          <th className="text-left p-2 font-semibold">Agent</th>
+                          {currentUser?.role === 'owner' && <th className="text-left p-2 font-semibold">Rep</th>}
+                          <th className="text-center p-2 font-semibold w-16"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {/* Inline Add Row */}
+                        {showAddOffer && !editingOffer && (
+                          <tr className="bg-cyan-500/5 border-b border-cyan-500/20">
+                            <td className="p-1.5 pl-3 sticky left-0 bg-cyan-500/5 z-10"><span className="text-cyan-400 text-[10px] font-semibold">NEW</span></td>
+                            <td className="p-1.5"><input type="date" value={offerForm.offer_date} onChange={e => setOfferForm(f => ({ ...f, offer_date: e.target.value }))} className="bg-slate-700 text-white text-[10px] p-1 rounded border border-slate-600 w-28" /></td>
+                            <td className="p-1.5"><input type="text" value={offerForm.property_address} onChange={e => setOfferForm(f => ({ ...f, property_address: e.target.value }))} className="bg-slate-700 text-white text-[10px] p-1 rounded border border-slate-600 w-44" placeholder="123 Main St *" /></td>
+                            <td className="p-1.5"><input type="text" value={offerForm.mls_number} onChange={e => { const v = e.target.value; setOfferForm(f => ({ ...f, mls_number: v, is_off_market: isOffMarket(v) || f.is_off_market })); }} className="bg-slate-700 text-white text-[10px] p-1 rounded border border-slate-600 w-20" placeholder="MLS / off mkt" /></td>
+                            <td className="p-1.5"><input type="number" value={offerForm.asking_price} onChange={e => setOfferForm(f => ({ ...f, asking_price: e.target.value }))} className="bg-slate-700 text-white text-[10px] p-1 rounded border border-slate-600 w-20 text-right" placeholder="List $" /></td>
+                            <td className="p-1.5"><input type="number" value={offerForm.arv} onChange={e => setOfferForm(f => ({ ...f, arv: e.target.value }))} className="bg-slate-700 text-white text-[10px] p-1 rounded border border-slate-600 w-20 text-right" placeholder="ARV $" /></td>
+                            <td className="p-1.5 text-right text-blue-400/70">{offerForm.asking_price ? fmtK(parseFloat(offerForm.asking_price) * 0.7) : ''}</td>
+                            <td className="p-1.5 text-right text-cyan-400/70">{offerForm.arv ? fmtK(parseFloat(offerForm.arv) * 0.7) : ''}</td>
+                            <td className="p-1.5 text-right text-emerald-400/70">{offerForm.arv ? fmtK(parseFloat(offerForm.arv) * 0.75) : ''}</td>
+                            <td className="p-1.5"><input type="number" value={offerForm.offer_amount} onChange={e => setOfferForm(f => ({ ...f, offer_amount: e.target.value }))} className="bg-slate-700 text-white text-[10px] p-1 rounded border border-slate-600 w-20 text-right" placeholder="Offer $" /></td>
+                            <td className="p-1.5 text-center"><input type="checkbox" checked={offerForm.offer_sent} onChange={e => setOfferForm(f => ({ ...f, offer_sent: e.target.checked }))} className="w-3 h-3 rounded cursor-pointer" /></td>
+                            <td className="p-1.5 text-center"><input type="checkbox" checked={offerForm.second_offer} onChange={e => setOfferForm(f => ({ ...f, second_offer: e.target.checked }))} className="w-3 h-3 rounded cursor-pointer" /></td>
+                            <td className="p-1.5"><input type="text" value={offerForm.response} onChange={e => setOfferForm(f => ({ ...f, response: e.target.value }))} className="bg-slate-700 text-white text-[10px] p-1 rounded border border-slate-600 w-20" placeholder="..." /></td>
+                            <td className="p-1.5 text-center text-slate-600">—</td>
+                            <td className="p-1.5"><input type="text" value={offerForm.agent_name} onChange={e => setOfferForm(f => ({ ...f, agent_name: e.target.value }))} className="bg-slate-700 text-white text-[10px] p-1 rounded border border-slate-600 w-24" placeholder="Agent" /></td>
+                            {currentUser?.role === 'owner' && <td className="p-1.5 text-blue-400 text-[10px]">{currentUser?.display_name || ''}</td>}
+                            <td className="p-1.5 text-center">
+                              <div className="flex gap-1 justify-center">
+                                <button onClick={saveOffer} className="bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] px-2 py-1 rounded font-semibold">Save</button>
+                                <button onClick={() => { setShowAddOffer(false); setEditingOffer(null); }} className="text-slate-500 hover:text-white text-[10px] px-1">✕</button>
+                              </div>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {filtered.map(offer => {
-                            const cfg = STATUS_CONFIG[offer.status] || STATUS_CONFIG.active;
-                            const member = teamMembers.find(u => u.id === offer.user_id);
-                            const listP = parseFloat(offer.asking_price || 0);
-                            const arvP = parseFloat(offer.arv || 0);
-                            const daysSince = offer.last_followup_at ? Math.floor((new Date() - new Date(offer.last_followup_at)) / 86400000) : null;
-                            const needsFollowup = (daysSince === null || daysSince >= 3) && offer.status !== 'rejected' && offer.status !== 'accepted';
+                        )}
+                        {/* Empty state */}
+                        {filtered.length === 0 && !showAddOffer && (
+                          <tr><td colSpan={currentUser?.role === 'owner' ? 17 : 16} className="p-8 text-center text-slate-500">No offers yet — click "+ Log Offer" to add your first row</td></tr>
+                        )}
+                        {/* Data Rows */}
+                        {filtered.map(offer => {
+                          const cfg = STATUS_CONFIG[offer.status] || STATUS_CONFIG.active;
+                          const member = teamMembers.find(u => u.id === offer.user_id);
+                          const listP = parseFloat(offer.asking_price || 0);
+                          const arvP = parseFloat(offer.arv || 0);
+                          const daysSince = offer.last_followup_at ? Math.floor((new Date() - new Date(offer.last_followup_at)) / 86400000) : null;
+                          const needsFollowup = (daysSince === null || daysSince >= 3) && offer.status !== 'rejected' && offer.status !== 'accepted';
 
-                            return (
-                              <tr key={offer.id} className={`border-t border-slate-700/50 ${cfg.bg} hover:bg-slate-700/30 transition`}>
-                                {/* Status */}
-                                <td className="p-2 pl-3 sticky left-0 z-10" style={{background: 'inherit'}}>
-                                  <select value={offer.status} onChange={e => updateOfferStatus(offer, e.target.value)} className="bg-transparent text-[10px] font-semibold p-0 border-none cursor-pointer" style={{color: cfg.dot}}>
-                                    {Object.entries(STATUS_CONFIG).map(([k, c]) => <option key={k} value={k} style={{background: '#1e293b', color: 'white'}}>{c.label}</option>)}
-                                  </select>
-                                </td>
-                                {/* Date */}
-                                <td className="p-2 text-slate-400 whitespace-nowrap">{offer.offer_date ? new Date(offer.offer_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</td>
-                                {/* Address */}
-                                <td className="p-2">
-                                  <div className="flex items-center gap-1">
-                                    {offer.zillow_url ? <a href={offer.zillow_url} target="_blank" rel="noopener noreferrer" className="text-white hover:text-blue-400 truncate max-w-[180px]">{offer.property_address}</a> : <span className="text-white truncate max-w-[180px]">{offer.property_address}</span>}
-                                    {offer.is_off_market && <span className="text-[8px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-400 font-bold">OFF</span>}
-                                  </div>
-                                </td>
-                                {/* MLS */}
-                                <td className="p-2 text-slate-500">{offer.mls_number || '—'}</td>
-                                {/* List $ */}
-                                <td className="p-2 text-right text-slate-400">{fmtK(offer.asking_price)}</td>
-                                {/* ARV */}
-                                <td className="p-2 text-right text-slate-400">{fmtK(offer.arv)}</td>
-                                {/* 70% List */}
-                                <td className="p-2 text-right text-blue-400/70">{listP ? fmtK(listP * 0.7) : ''}</td>
-                                {/* 70% ARV */}
-                                <td className="p-2 text-right text-cyan-400/70">{arvP ? fmtK(arvP * 0.7) : ''}</td>
-                                {/* 75% ARV */}
-                                <td className="p-2 text-right text-emerald-400/70">{arvP ? fmtK(arvP * 0.75) : ''}</td>
-                                {/* Offer $ */}
-                                <td className="p-2 text-right text-amber-400 font-semibold">{fmtK(offer.offer_amount)}</td>
-                                {/* Offer Sent? */}
-                                <td className="p-2 text-center">
-                                  <div className="flex items-center gap-1 justify-center">
-                                    <input type="checkbox" checked={offer.offer_sent || false} onChange={e => updateOfferField(offer, 'offer_sent', e.target.checked)} className="w-3 h-3 rounded cursor-pointer" />
-                                    {offer.offer_sent && <input type="text" value={offer.offer_sent_note || ''} onBlur={e => updateOfferField(offer, 'offer_sent_note', e.target.value)} onChange={e => setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, offer_sent_note: e.target.value } : o))} className="bg-transparent text-[10px] text-slate-400 w-16 border-b border-slate-600 outline-none" placeholder="note" />}
-                                  </div>
-                                </td>
-                                {/* 2nd Offer */}
-                                <td className="p-2 text-center">
-                                  <div className="flex items-center gap-1 justify-center">
-                                    <input type="checkbox" checked={offer.second_offer || false} onChange={e => updateOfferField(offer, 'second_offer', e.target.checked)} className="w-3 h-3 rounded cursor-pointer" />
-                                    {offer.second_offer && <input type="text" value={offer.second_offer_note || ''} onBlur={e => updateOfferField(offer, 'second_offer_note', e.target.value)} onChange={e => setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, second_offer_note: e.target.value } : o))} className="bg-transparent text-[10px] text-slate-400 w-16 border-b border-slate-600 outline-none" placeholder="note" />}
-                                  </div>
-                                </td>
-                                {/* Response */}
-                                <td className="p-2">
-                                  <input type="text" value={offer.response || ''} onBlur={e => updateOfferField(offer, 'response', e.target.value)} onChange={e => setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, response: e.target.value } : o))} className="bg-transparent text-[10px] text-slate-300 w-20 border-b border-slate-700 outline-none focus:border-blue-500" placeholder="..." />
-                                </td>
-                                {/* Follow-up */}
-                                <td className="p-2">
-                                  <div className="flex items-center gap-0.5 justify-center">
-                                    <button onClick={() => toggleFollowUp(offer, 'emailed')} className={`text-[10px] px-1 py-0.5 rounded ${offer.emailed ? 'bg-green-500/20 text-green-400' : 'text-slate-600 hover:text-slate-400'}`} title="Emailed">✉️</button>
-                                    <button onClick={() => toggleFollowUp(offer, 'texted')} className={`text-[10px] px-1 py-0.5 rounded ${offer.texted ? 'bg-green-500/20 text-green-400' : 'text-slate-600 hover:text-slate-400'}`} title="Texted">💬</button>
-                                    <button onClick={() => toggleFollowUp(offer, 'called')} className={`text-[10px] px-1 py-0.5 rounded ${offer.called ? 'bg-green-500/20 text-green-400' : 'text-slate-600 hover:text-slate-400'}`} title="Called">📞</button>
-                                    {needsFollowup && <span className="text-[8px] text-amber-400 animate-pulse" title={daysSince !== null ? `${daysSince}d ago` : 'Never'}>🔔</span>}
-                                  </div>
-                                </td>
-                                {/* Agent */}
-                                <td className="p-2 text-slate-500 truncate max-w-[100px]">{offer.agent_name || '—'}</td>
-                                {/* Rep */}
-                                {currentUser?.role === 'owner' && <td className="p-2 text-blue-400 text-[10px] truncate max-w-[80px]">{member?.display_name || member?.name || ''}</td>}
-                                {/* Actions */}
-                                <td className="p-2 text-center">
-                                  <div className="flex gap-0.5 justify-center">
-                                    <button onClick={() => { setEditingOffer(offer); setOfferForm({ property_address: offer.property_address || '', mls_number: offer.mls_number || '', asking_price: offer.asking_price || '', offer_amount: offer.offer_amount || '', offer_date: offer.offer_date || '', is_off_market: offer.is_off_market || false, agent_name: offer.agent_name || '', agent_phone: offer.agent_phone || '', agent_email: offer.agent_email || '', zillow_url: offer.zillow_url || '', notes: offer.notes || '', status: offer.status || 'active', arv: offer.arv || '', offer_sent: offer.offer_sent || false, offer_sent_note: offer.offer_sent_note || '', second_offer: offer.second_offer || false, second_offer_note: offer.second_offer_note || '', response: offer.response || '' }); setShowAddOffer(true); }} className="text-slate-600 hover:text-white text-[10px]">✏️</button>
-                                    <button onClick={async () => { if (confirm('Delete?')) { await db.offerLog.delete(offer.id); setOfferLog(prev => prev.filter(o => o.id !== offer.id)); }}} className="text-slate-600 hover:text-red-400 text-[10px]">🗑️</button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                          return (
+                            <tr key={offer.id} className={`border-t border-slate-700/50 ${cfg.bg} hover:bg-slate-700/30 transition`}>
+                              <td className="p-2 pl-3 sticky left-0 z-10" style={{background: 'inherit'}}>
+                                <select value={offer.status} onChange={e => updateOfferStatus(offer, e.target.value)} className="bg-transparent text-[10px] font-semibold p-0 border-none cursor-pointer" style={{color: cfg.dot}}>
+                                  {Object.entries(STATUS_CONFIG).map(([k, c]) => <option key={k} value={k} style={{background: '#1e293b', color: 'white'}}>{c.label}</option>)}
+                                </select>
+                              </td>
+                              <td className="p-2 text-slate-400 whitespace-nowrap">{offer.offer_date ? new Date(offer.offer_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</td>
+                              <td className="p-2">
+                                <div className="flex items-center gap-1">
+                                  {offer.zillow_url ? <a href={offer.zillow_url} target="_blank" rel="noopener noreferrer" className="text-white hover:text-blue-400 truncate max-w-[180px]">{offer.property_address}</a> : <span className="text-white truncate max-w-[180px]">{offer.property_address}</span>}
+                                  {offer.is_off_market && <span className="text-[8px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-400 font-bold">OFF</span>}
+                                </div>
+                              </td>
+                              <td className="p-2 text-slate-500">{offer.mls_number || '—'}</td>
+                              <td className="p-2 text-right text-slate-400">{fmtK(offer.asking_price)}</td>
+                              <td className="p-2 text-right text-slate-400">{fmtK(offer.arv)}</td>
+                              <td className="p-2 text-right text-blue-400/70">{listP ? fmtK(listP * 0.7) : ''}</td>
+                              <td className="p-2 text-right text-cyan-400/70">{arvP ? fmtK(arvP * 0.7) : ''}</td>
+                              <td className="p-2 text-right text-emerald-400/70">{arvP ? fmtK(arvP * 0.75) : ''}</td>
+                              <td className="p-2 text-right text-amber-400 font-semibold">{fmtK(offer.offer_amount)}</td>
+                              <td className="p-2 text-center">
+                                <div className="flex items-center gap-1 justify-center">
+                                  <input type="checkbox" checked={offer.offer_sent || false} onChange={e => updateOfferField(offer, 'offer_sent', e.target.checked)} className="w-3 h-3 rounded cursor-pointer" />
+                                  {offer.offer_sent && <input type="text" value={offer.offer_sent_note || ''} onBlur={e => updateOfferField(offer, 'offer_sent_note', e.target.value)} onChange={e => setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, offer_sent_note: e.target.value } : o))} className="bg-transparent text-[10px] text-slate-400 w-16 border-b border-slate-600 outline-none" placeholder="note" />}
+                                </div>
+                              </td>
+                              <td className="p-2 text-center">
+                                <div className="flex items-center gap-1 justify-center">
+                                  <input type="checkbox" checked={offer.second_offer || false} onChange={e => updateOfferField(offer, 'second_offer', e.target.checked)} className="w-3 h-3 rounded cursor-pointer" />
+                                  {offer.second_offer && <input type="text" value={offer.second_offer_note || ''} onBlur={e => updateOfferField(offer, 'second_offer_note', e.target.value)} onChange={e => setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, second_offer_note: e.target.value } : o))} className="bg-transparent text-[10px] text-slate-400 w-16 border-b border-slate-600 outline-none" placeholder="note" />}
+                                </div>
+                              </td>
+                              <td className="p-2">
+                                <input type="text" value={offer.response || ''} onBlur={e => updateOfferField(offer, 'response', e.target.value)} onChange={e => setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, response: e.target.value } : o))} className="bg-transparent text-[10px] text-slate-300 w-20 border-b border-slate-700 outline-none focus:border-blue-500" placeholder="..." />
+                              </td>
+                              <td className="p-2">
+                                <div className="flex items-center gap-0.5 justify-center">
+                                  <button onClick={() => toggleFollowUp(offer, 'emailed')} className={`text-[10px] px-1 py-0.5 rounded ${offer.emailed ? 'bg-green-500/20 text-green-400' : 'text-slate-600 hover:text-slate-400'}`} title="Emailed">✉️</button>
+                                  <button onClick={() => toggleFollowUp(offer, 'texted')} className={`text-[10px] px-1 py-0.5 rounded ${offer.texted ? 'bg-green-500/20 text-green-400' : 'text-slate-600 hover:text-slate-400'}`} title="Texted">💬</button>
+                                  <button onClick={() => toggleFollowUp(offer, 'called')} className={`text-[10px] px-1 py-0.5 rounded ${offer.called ? 'bg-green-500/20 text-green-400' : 'text-slate-600 hover:text-slate-400'}`} title="Called">📞</button>
+                                  {needsFollowup && <span className="text-[8px] text-amber-400 animate-pulse" title={daysSince !== null ? `${daysSince}d ago` : 'Never'}>🔔</span>}
+                                </div>
+                              </td>
+                              <td className="p-2 text-slate-500 truncate max-w-[100px]">{offer.agent_name || '—'}</td>
+                              {currentUser?.role === 'owner' && <td className="p-2 text-blue-400 text-[10px] truncate max-w-[80px]">{member?.display_name || member?.name || ''}</td>}
+                              <td className="p-2 text-center">
+                                <div className="flex gap-0.5 justify-center">
+                                  <button onClick={() => { setEditingOffer(offer); setOfferForm({ property_address: offer.property_address || '', mls_number: offer.mls_number || '', asking_price: offer.asking_price || '', offer_amount: offer.offer_amount || '', offer_date: offer.offer_date || '', is_off_market: offer.is_off_market || false, agent_name: offer.agent_name || '', agent_phone: offer.agent_phone || '', agent_email: offer.agent_email || '', zillow_url: offer.zillow_url || '', notes: offer.notes || '', status: offer.status || 'active', arv: offer.arv || '', offer_sent: offer.offer_sent || false, offer_sent_note: offer.offer_sent_note || '', second_offer: offer.second_offer || false, second_offer_note: offer.second_offer_note || '', response: offer.response || '' }); setShowAddOffer(true); }} className="text-slate-600 hover:text-white text-[10px]" title="Edit full details">✏️</button>
+                                  <button onClick={async () => { if (confirm('Delete?')) { await db.offerLog.delete(offer.id); setOfferLog(prev => prev.filter(o => o.id !== offer.id)); }}} className="text-slate-600 hover:text-red-400 text-[10px]">🗑️</button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
 
-                  {/* Add/Edit Offer Modal */}
-                  {showAddOffer && (
+                  {/* Edit Modal — for full details (zillow, agent phone/email, notes) */}
+                  {showAddOffer && editingOffer && (
                     <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
                       <div className="bg-slate-800 rounded-2xl w-full max-w-md border border-slate-700 max-h-[90vh] flex flex-col">
                         <div className="flex justify-between items-center p-5 pb-3 border-b border-slate-700">
-                          <h3 className="text-lg font-bold text-white">{editingOffer ? 'Edit Offer' : 'Log New Offer'}</h3>
+                          <h3 className="text-lg font-bold text-white">Edit Offer Details</h3>
                           <button onClick={() => { setShowAddOffer(false); setEditingOffer(null); }} className="text-slate-400 hover:text-white text-2xl">×</button>
                         </div>
                         <div className="p-5 space-y-3 overflow-y-auto flex-1">
-                          <div>
-                            <label className="text-slate-400 text-xs">Property Address *</label>
-                            <input type="text" value={offerForm.property_address} onChange={e => setOfferForm(f => ({ ...f, property_address: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="123 Main St, City, NJ" />
-                          </div>
                           <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="text-slate-400 text-xs">MLS #</label>
-                              <input type="text" value={offerForm.mls_number} onChange={e => { const v = e.target.value; setOfferForm(f => ({ ...f, mls_number: v, is_off_market: isOffMarket(v) || f.is_off_market })); }} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="MLS # or 'off market'" />
-                            </div>
-                            <div>
-                              <label className="text-slate-400 text-xs">Date *</label>
-                              <input type="date" value={offerForm.offer_date} onChange={e => setOfferForm(f => ({ ...f, offer_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
-                            </div>
+                            <div><label className="text-slate-400 text-xs">Address</label><input type="text" value={offerForm.property_address} onChange={e => setOfferForm(f => ({ ...f, property_address: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" /></div>
+                            <div><label className="text-slate-400 text-xs">Date</label><input type="date" value={offerForm.offer_date} onChange={e => setOfferForm(f => ({ ...f, offer_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" /></div>
                           </div>
                           <div className="grid grid-cols-3 gap-3">
-                            <div>
-                              <label className="text-slate-400 text-xs">List Price</label>
-                              <input type="number" value={offerForm.asking_price} onChange={e => setOfferForm(f => ({ ...f, asking_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="$0" />
-                            </div>
-                            <div>
-                              <label className="text-slate-400 text-xs">ARV</label>
-                              <input type="number" value={offerForm.arv} onChange={e => setOfferForm(f => ({ ...f, arv: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="$0" />
-                            </div>
-                            <div>
-                              <label className="text-slate-400 text-xs">Offer Amount</label>
-                              <input type="number" value={offerForm.offer_amount} onChange={e => setOfferForm(f => ({ ...f, offer_amount: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="$0" />
-                            </div>
+                            <div><label className="text-slate-400 text-xs">List $</label><input type="number" value={offerForm.asking_price} onChange={e => setOfferForm(f => ({ ...f, asking_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" /></div>
+                            <div><label className="text-slate-400 text-xs">ARV</label><input type="number" value={offerForm.arv} onChange={e => setOfferForm(f => ({ ...f, arv: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" /></div>
+                            <div><label className="text-slate-400 text-xs">Offer $</label><input type="number" value={offerForm.offer_amount} onChange={e => setOfferForm(f => ({ ...f, offer_amount: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" /></div>
                           </div>
-                          {/* Auto-calculated benchmarks */}
-                          {(offerForm.asking_price || offerForm.arv) && (
-                            <div className="bg-slate-900/50 rounded-lg p-2.5 flex gap-4 text-[10px]">
-                              {offerForm.asking_price && <span className="text-blue-400">70% List: <b>${(parseFloat(offerForm.asking_price) * 0.7).toLocaleString(undefined, {maximumFractionDigits: 0})}</b></span>}
-                              {offerForm.arv && <span className="text-cyan-400">70% ARV: <b>${(parseFloat(offerForm.arv) * 0.7).toLocaleString(undefined, {maximumFractionDigits: 0})}</b></span>}
-                              {offerForm.arv && <span className="text-emerald-400">75% ARV: <b>${(parseFloat(offerForm.arv) * 0.75).toLocaleString(undefined, {maximumFractionDigits: 0})}</b></span>}
-                            </div>
-                          )}
-                          <div>
-                            <label className="text-slate-400 text-xs">Zillow Link</label>
-                            <input type="url" value={offerForm.zillow_url} onChange={e => setOfferForm(f => ({ ...f, zillow_url: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="https://zillow.com/..." />
-                          </div>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" checked={offerForm.is_off_market} onChange={e => setOfferForm(f => ({ ...f, is_off_market: e.target.checked }))} className="w-4 h-4 rounded" />
-                            <span className="text-slate-300 text-sm">🔥 Off-Market Deal</span>
-                          </label>
-                          {/* Offer Sent / 2nd Offer / Response */}
-                          <div className="border-t border-slate-700 pt-3 space-y-2">
-                            <div className="flex items-center gap-3">
-                              <label className="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" checked={offerForm.offer_sent} onChange={e => setOfferForm(f => ({ ...f, offer_sent: e.target.checked }))} className="w-4 h-4 rounded" />
-                                <span className="text-slate-300 text-sm">📤 Offer Sent</span>
-                              </label>
-                              {offerForm.offer_sent && <input type="text" value={offerForm.offer_sent_note} onChange={e => setOfferForm(f => ({ ...f, offer_sent_note: e.target.value }))} className="flex-1 bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-xs" placeholder="Note..." />}
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <label className="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" checked={offerForm.second_offer} onChange={e => setOfferForm(f => ({ ...f, second_offer: e.target.checked }))} className="w-4 h-4 rounded" />
-                                <span className="text-slate-300 text-sm">📤 2nd Offer</span>
-                              </label>
-                              {offerForm.second_offer && <input type="text" value={offerForm.second_offer_note} onChange={e => setOfferForm(f => ({ ...f, second_offer_note: e.target.value }))} className="flex-1 bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-xs" placeholder="Note..." />}
-                            </div>
-                            <div>
-                              <label className="text-slate-400 text-xs">Response</label>
-                              <input type="text" value={offerForm.response} onChange={e => setOfferForm(f => ({ ...f, response: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="e.g. Countered at $X, Rejected, No response..." />
-                            </div>
-                          </div>
-                          {/* Agent info */}
+                          <div><label className="text-slate-400 text-xs">Zillow Link</label><input type="url" value={offerForm.zillow_url} onChange={e => setOfferForm(f => ({ ...f, zillow_url: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="https://zillow.com/..." /></div>
+                          <div><label className="text-slate-400 text-xs">MLS #</label><input type="text" value={offerForm.mls_number} onChange={e => { const v = e.target.value; setOfferForm(f => ({ ...f, mls_number: v, is_off_market: isOffMarket(v) || f.is_off_market })); }} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" /></div>
+                          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={offerForm.is_off_market} onChange={e => setOfferForm(f => ({ ...f, is_off_market: e.target.checked }))} className="w-4 h-4 rounded" /><span className="text-slate-300 text-sm">🔥 Off-Market</span></label>
                           <div className="border-t border-slate-700 pt-3">
                             <p className="text-slate-400 text-xs font-semibold mb-2">🤝 Agent Info</p>
                             <input type="text" value={offerForm.agent_name} onChange={e => setOfferForm(f => ({ ...f, agent_name: e.target.value }))} className="w-full bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm mb-2" placeholder="Agent name" />
                             <div className="grid grid-cols-2 gap-2">
-                              <input type="tel" value={offerForm.agent_phone} onChange={e => setOfferForm(f => ({ ...f, agent_phone: e.target.value }))} className="w-full bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Phone" />
-                              <input type="email" value={offerForm.agent_email} onChange={e => setOfferForm(f => ({ ...f, agent_email: e.target.value }))} className="w-full bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Email" />
+                              <input type="tel" value={offerForm.agent_phone} onChange={e => setOfferForm(f => ({ ...f, agent_phone: e.target.value }))} className="bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Phone" />
+                              <input type="email" value={offerForm.agent_email} onChange={e => setOfferForm(f => ({ ...f, agent_email: e.target.value }))} className="bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Email" />
                             </div>
                           </div>
-                          <div>
-                            <label className="text-slate-400 text-xs">Notes</label>
-                            <input type="text" value={offerForm.notes} onChange={e => setOfferForm(f => ({ ...f, notes: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Quick note..." />
-                          </div>
+                          <div><label className="text-slate-400 text-xs">Notes</label><input type="text" value={offerForm.notes} onChange={e => setOfferForm(f => ({ ...f, notes: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="Quick note..." /></div>
                         </div>
                         <div className="p-5 pt-3 border-t border-slate-700 flex gap-2">
                           <button onClick={() => { setShowAddOffer(false); setEditingOffer(null); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-lg text-sm font-semibold">Cancel</button>
-                          <button onClick={saveOffer} className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white py-2.5 rounded-lg text-sm font-semibold">{editingOffer ? 'Update' : 'Log Offer'}</button>
+                          <button onClick={saveOffer} className="flex-1 bg-cyan-600 hover:bg-cyan-700 text-white py-2.5 rounded-lg text-sm font-semibold">Update</button>
                         </div>
                       </div>
                     </div>
