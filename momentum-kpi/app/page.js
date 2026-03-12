@@ -1425,7 +1425,10 @@ export default function MomentumApp() {
   const [offerForm, setOfferForm] = useState({
     property_address: '', mls_number: '', asking_price: '', offer_amount: '',
     offer_date: '', is_off_market: false, agent_name: '', agent_phone: '', agent_email: '',
-    zillow_url: '', notes: '', status: 'active'
+    zillow_url: '', notes: '', status: 'active', arv: '',
+    offer_sent: false, offer_sent_note: '',
+    second_offer: false, second_offer_note: '',
+    response: ''
   });
   const [offerFilter, setOfferFilter] = useState('all'); // all, active, accepted, countered, rejected, watching, potential_deal, potential_vip
   const [showAddBuyer, setShowAddBuyer] = useState(false);
@@ -3413,103 +3416,88 @@ Style:
             {dealsView === 'offers' && (() => {
               const OFF_MARKET_KEYWORDS = ['off market', 'otto', 'otto/off market', 'otto / off market'];
               const isOffMarket = (mls) => { if (!mls) return false; const v = mls.toLowerCase().trim(); return OFF_MARKET_KEYWORDS.some(k => v.includes(k)); };
+              const [offerSearch, setOfferSearch] = React.useState('');
 
               const STATUS_CONFIG = {
-                active: { label: 'Active', color: 'bg-slate-500/20 text-slate-400', border: 'border-slate-700/50' },
-                accepted: { label: '✅ Accepted', color: 'bg-green-500/20 text-green-400', border: 'border-green-500/30' },
-                countered: { label: '🔄 Countered', color: 'bg-amber-500/20 text-amber-400', border: 'border-amber-500/30' },
-                rejected: { label: '❌ Rejected', color: 'bg-red-500/20 text-red-400', border: 'border-red-500/30' },
-                watching: { label: '👀 Watching', color: 'bg-purple-400/20 text-purple-300', border: 'border-purple-400/30' },
-                potential_deal: { label: '💎 Potential Deal', color: 'bg-cyan-500/20 text-cyan-400', border: 'border-cyan-500/30' },
-                potential_vip: { label: '⭐ Potential VIP', color: 'bg-pink-500/20 text-pink-400', border: 'border-pink-500/30' }
+                active: { label: 'Active', bg: 'bg-slate-800', text: 'text-slate-400', dot: '#64748b' },
+                accepted: { label: 'Accepted', bg: 'bg-green-500/10', text: 'text-green-400', dot: '#22c55e' },
+                countered: { label: 'Countered', bg: 'bg-amber-500/10', text: 'text-amber-400', dot: '#f59e0b' },
+                rejected: { label: 'Rejected', bg: 'bg-red-500/10', text: 'text-red-400', dot: '#ef4444' },
+                watching: { label: 'Watching', bg: 'bg-purple-400/10', text: 'text-purple-300', dot: '#c084fc' },
+                potential_deal: { label: 'Potential Deal', bg: 'bg-cyan-500/10', text: 'text-cyan-400', dot: '#22d3ee' },
+                potential_vip: { label: 'Potential VIP', bg: 'bg-pink-500/10', text: 'text-pink-400', dot: '#f472b6' }
               };
 
               const saveOffer = async () => {
                 if (!offerForm.property_address || !offerForm.offer_date) return;
                 const offMarket = offerForm.is_off_market || isOffMarket(offerForm.mls_number);
                 const data = {
-                  organization_id: organization.id,
-                  user_id: currentUser.id,
-                  property_address: offerForm.property_address,
-                  mls_number: offerForm.mls_number || null,
+                  organization_id: organization.id, user_id: currentUser.id,
+                  property_address: offerForm.property_address, mls_number: offerForm.mls_number || null,
                   asking_price: offerForm.asking_price ? parseFloat(offerForm.asking_price) : null,
                   offer_amount: offerForm.offer_amount ? parseFloat(offerForm.offer_amount) : null,
-                  offer_date: offerForm.offer_date,
-                  is_off_market: offMarket,
-                  status: offerForm.status || 'active',
-                  agent_name: offerForm.agent_name || null,
-                  agent_phone: offerForm.agent_phone || null,
-                  agent_email: offerForm.agent_email || null,
-                  zillow_url: offerForm.zillow_url || null,
-                  notes: offerForm.notes || null,
+                  offer_date: offerForm.offer_date, is_off_market: offMarket,
+                  status: offerForm.status || 'active', arv: offerForm.arv ? parseFloat(offerForm.arv) : null,
+                  offer_sent: offerForm.offer_sent || false, offer_sent_note: offerForm.offer_sent_note || null,
+                  second_offer: offerForm.second_offer || false, second_offer_note: offerForm.second_offer_note || null,
+                  response: offerForm.response || null,
+                  agent_name: offerForm.agent_name || null, agent_phone: offerForm.agent_phone || null, agent_email: offerForm.agent_email || null,
+                  zillow_url: offerForm.zillow_url || null, notes: offerForm.notes || null,
                   updated_at: new Date().toISOString()
                 };
                 try {
-                  if (editingOffer) {
-                    await db.offerLog.update(editingOffer.id, data);
-                  } else {
-                    await db.offerLog.create(data);
-                  }
-                  loadOfferLog();
-                  setShowAddOffer(false);
-                  setEditingOffer(null);
-                  setOfferForm({ property_address: '', mls_number: '', asking_price: '', offer_amount: '', offer_date: getTodayInOrgTimezone(), is_off_market: false, agent_name: '', agent_phone: '', agent_email: '', zillow_url: '', notes: '', status: 'active' });
+                  if (editingOffer) { await db.offerLog.update(editingOffer.id, data); }
+                  else { await db.offerLog.create(data); }
+                  loadOfferLog(); setShowAddOffer(false); setEditingOffer(null);
+                  setOfferForm({ property_address: '', mls_number: '', asking_price: '', offer_amount: '', offer_date: getTodayInOrgTimezone(), is_off_market: false, agent_name: '', agent_phone: '', agent_email: '', zillow_url: '', notes: '', status: 'active', arv: '', offer_sent: false, offer_sent_note: '', second_offer: false, second_offer_note: '', response: '' });
                 } catch (e) { console.error('Save offer error:', e); }
+              };
+
+              const updateOfferField = async (offer, field, value) => {
+                const updates = { [field]: value, updated_at: new Date().toISOString() };
+                await db.offerLog.update(offer.id, updates);
+                setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, ...updates } : o));
               };
 
               const updateOfferStatus = async (offer, newStatus) => {
                 await db.offerLog.update(offer.id, { status: newStatus, updated_at: new Date().toISOString() });
                 setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, status: newStatus } : o));
-                // If accepted → auto-create pipeline deal
                 if (newStatus === 'accepted') {
-                  const pipelineData = {
-                    organization_id: organization.id,
-                    user_id: offer.user_id || currentUser.id,
-                    property_address: offer.property_address,
-                    zillow_url: offer.zillow_url || null,
-                    asking_price: offer.asking_price || null,
-                    offer_amount: offer.offer_amount || null,
-                    offer_date: offer.offer_date,
-                    accepted_price: offer.offer_amount || null,
-                    deal_source: offer.is_off_market ? 'off_market' : 'on_market',
-                    deal_type: 'wholesale',
-                    stage: 'offer_accepted',
-                    agent_name: offer.agent_name || null,
-                    agent_email: offer.agent_email || null,
-                    agent_phone: offer.agent_phone || null,
-                    note_log: [],
-                    documents: {},
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                  };
-                  await db.pipeline.create(pipelineData);
+                  await db.pipeline.create({
+                    organization_id: organization.id, user_id: offer.user_id || currentUser.id,
+                    property_address: offer.property_address, zillow_url: offer.zillow_url || null,
+                    asking_price: offer.asking_price || null, offer_amount: offer.offer_amount || null,
+                    offer_date: offer.offer_date, accepted_price: offer.offer_amount || null,
+                    deal_source: offer.is_off_market ? 'off_market' : 'on_market', deal_type: 'wholesale',
+                    stage: 'offer_accepted', agent_name: offer.agent_name || null,
+                    agent_email: offer.agent_email || null, agent_phone: offer.agent_phone || null,
+                    note_log: [], documents: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+                  });
                   loadPipeline();
                   logActivity('offer_accepted', `${currentUser.display_name || currentUser.name} got offer accepted on "${offer.property_address}"`, { address: offer.property_address });
-                }
-                // If potential_vip → auto-add VIP agent
-                if (newStatus === 'potential_vip' && offer.agent_name) {
-                  logActivity('potential_vip', `${currentUser.display_name || currentUser.name} flagged ${offer.agent_name} as potential VIP from "${offer.property_address}"`, { agent: offer.agent_name });
                 }
               };
 
               const toggleFollowUp = async (offer, type) => {
                 const now = new Date().toISOString();
-                const updates = {};
+                const updates = { updated_at: now };
                 if (type === 'emailed') { updates.emailed = !offer.emailed; if (!offer.emailed) updates.emailed_at = now; }
                 if (type === 'texted') { updates.texted = !offer.texted; if (!offer.texted) updates.texted_at = now; }
                 if (type === 'called') { updates.called = !offer.called; if (!offer.called) updates.called_at = now; }
-                // Update last_followup_at to latest action
                 const times = [offer.emailed_at, offer.texted_at, offer.called_at, updates.emailed_at, updates.texted_at, updates.called_at].filter(Boolean);
                 if (times.length > 0) updates.last_followup_at = times.sort().reverse()[0];
-                updates.updated_at = now;
                 await db.offerLog.update(offer.id, updates);
                 setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, ...updates } : o));
               };
 
-              // Filter
-              const filtered = offerFilter === 'all' ? offerLog : offerLog.filter(o => o.status === offerFilter);
+              // Filter + Search
+              const searchLower = offerSearch.toLowerCase().trim();
+              let filtered = offerFilter === 'all' ? offerLog : offerLog.filter(o => o.status === offerFilter);
+              if (searchLower) filtered = filtered.filter(o => (o.property_address || '').toLowerCase().includes(searchLower) || (o.mls_number || '').toLowerCase().includes(searchLower));
+              const dupeCheck = searchLower ? offerLog.filter(o => (o.property_address || '').toLowerCase().includes(searchLower)) : [];
               const counts = {};
               Object.keys(STATUS_CONFIG).forEach(s => { counts[s] = offerLog.filter(o => o.status === s).length; });
+              const fmtK = (v) => { const n = parseFloat(v); return n ? (n >= 1000 ? `$${(n/1000).toFixed(0)}k` : `$${n.toLocaleString()}`) : ''; };
 
               return (
                 <>
@@ -3519,101 +3507,154 @@ Style:
                       <h2 className="text-lg font-bold text-white">📋 Offer Log</h2>
                       <span className="text-slate-500 text-xs">{offerLog.length} total</span>
                     </div>
-                    <button onClick={() => { setShowAddOffer(true); setEditingOffer(null); setOfferForm({ property_address: '', mls_number: '', asking_price: '', offer_amount: '', offer_date: getTodayInOrgTimezone(), is_off_market: false, agent_name: '', agent_phone: '', agent_email: '', zillow_url: '', notes: '', status: 'active' }); }} className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg text-sm">
-                      + Log Offer
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {/* Search */}
+                      <div className="relative">
+                        <input type="text" value={offerSearch} onChange={e => setOfferSearch(e.target.value)} placeholder="🔍 Search address..." className="bg-slate-700 text-white text-xs p-2 pl-3 pr-8 rounded-lg border border-slate-600 w-48" />
+                        {offerSearch && (
+                          <button onClick={() => setOfferSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs">✕</button>
+                        )}
+                      </div>
+                      <button onClick={() => { setShowAddOffer(true); setEditingOffer(null); setOfferForm({ property_address: '', mls_number: '', asking_price: '', offer_amount: '', offer_date: getTodayInOrgTimezone(), is_off_market: false, agent_name: '', agent_phone: '', agent_email: '', zillow_url: '', notes: '', status: 'active', arv: '', offer_sent: false, offer_sent_note: '', second_offer: false, second_offer_note: '', response: '' }); }} className="bg-cyan-600 hover:bg-cyan-700 text-white font-semibold py-2 px-4 rounded-lg text-sm whitespace-nowrap">
+                        + Log Offer
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Duplicate alert */}
+                  {searchLower && dupeCheck.length > 0 && (
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2 mb-3 flex items-center gap-2">
+                      <span className="text-amber-400 text-xs font-semibold">⚠️ {dupeCheck.length} offer{dupeCheck.length > 1 ? 's' : ''} found matching "{offerSearch}"</span>
+                      <span className="text-slate-500 text-[10px]">— by {[...new Set(dupeCheck.map(o => { const m = teamMembers.find(u => u.id === o.user_id); return m?.display_name || m?.name || 'Unknown'; }))].join(', ')}</span>
+                    </div>
+                  )}
 
                   {/* Status Filters */}
                   <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3">
-                    <button onClick={() => setOfferFilter('all')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${offerFilter === 'all' ? 'bg-slate-600 text-white' : 'bg-slate-800 text-slate-500 hover:text-white'}`}>
-                      All ({offerLog.length})
-                    </button>
+                    <button onClick={() => setOfferFilter('all')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${offerFilter === 'all' ? 'bg-slate-600 text-white' : 'bg-slate-800 text-slate-500'}`}>All ({offerLog.length})</button>
                     {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
-                      <button key={key} onClick={() => setOfferFilter(key)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${offerFilter === key ? cfg.color + ' ring-1 ring-current' : 'bg-slate-800 text-slate-500 hover:text-white'}`}>
+                      <button key={key} onClick={() => setOfferFilter(key)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 ${offerFilter === key ? cfg.bg + ' ' + cfg.text + ' ring-1 ring-current' : 'bg-slate-800 text-slate-500'}`}>
+                        <span className="w-2 h-2 rounded-full inline-block" style={{background: cfg.dot}} />
                         {cfg.label} {counts[key] > 0 ? `(${counts[key]})` : ''}
                       </button>
                     ))}
                   </div>
 
-                  {/* Offer List */}
-                  {filtered.length === 0 && (
+                  {/* Spreadsheet Table */}
+                  {filtered.length === 0 ? (
                     <div className="bg-slate-800 rounded-xl p-8 text-center border border-slate-700">
                       <span className="text-3xl block mb-2">📋</span>
-                      <p className="text-slate-400">{offerFilter === 'all' ? 'No offers logged yet' : `No ${STATUS_CONFIG[offerFilter]?.label || ''} offers`}</p>
-                      <p className="text-slate-600 text-xs mt-1">Tap "+ Log Offer" to start tracking</p>
+                      <p className="text-slate-400">{offerFilter === 'all' ? 'No offers logged yet' : `No ${STATUS_CONFIG[offerFilter]?.label} offers`}</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-slate-700">
+                      <table className="w-full text-xs" style={{minWidth: '1100px'}}>
+                        <thead>
+                          <tr className="bg-slate-800/80 text-slate-400 text-[10px] uppercase tracking-wider">
+                            <th className="text-left p-2 pl-3 font-semibold sticky left-0 bg-slate-800/80 z-10">Status</th>
+                            <th className="text-left p-2 font-semibold">Date</th>
+                            <th className="text-left p-2 font-semibold">Address</th>
+                            <th className="text-left p-2 font-semibold">MLS</th>
+                            <th className="text-right p-2 font-semibold">List $</th>
+                            <th className="text-right p-2 font-semibold">ARV</th>
+                            <th className="text-right p-2 font-semibold" title="70% of List">70% List</th>
+                            <th className="text-right p-2 font-semibold" title="70% of ARV">70% ARV</th>
+                            <th className="text-right p-2 font-semibold" title="75% of ARV">75% ARV</th>
+                            <th className="text-right p-2 font-semibold">Offer $</th>
+                            <th className="text-center p-2 font-semibold">Sent?</th>
+                            <th className="text-center p-2 font-semibold">2nd Offer</th>
+                            <th className="text-left p-2 font-semibold">Response</th>
+                            <th className="text-center p-2 font-semibold">Follow-up</th>
+                            <th className="text-left p-2 font-semibold">Agent</th>
+                            {currentUser?.role === 'owner' && <th className="text-left p-2 font-semibold">Rep</th>}
+                            <th className="text-center p-2 font-semibold">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.map(offer => {
+                            const cfg = STATUS_CONFIG[offer.status] || STATUS_CONFIG.active;
+                            const member = teamMembers.find(u => u.id === offer.user_id);
+                            const listP = parseFloat(offer.asking_price || 0);
+                            const arvP = parseFloat(offer.arv || 0);
+                            const daysSince = offer.last_followup_at ? Math.floor((new Date() - new Date(offer.last_followup_at)) / 86400000) : null;
+                            const needsFollowup = (daysSince === null || daysSince >= 3) && offer.status !== 'rejected' && offer.status !== 'accepted';
+
+                            return (
+                              <tr key={offer.id} className={`border-t border-slate-700/50 ${cfg.bg} hover:bg-slate-700/30 transition`}>
+                                {/* Status */}
+                                <td className="p-2 pl-3 sticky left-0 z-10" style={{background: 'inherit'}}>
+                                  <select value={offer.status} onChange={e => updateOfferStatus(offer, e.target.value)} className="bg-transparent text-[10px] font-semibold p-0 border-none cursor-pointer" style={{color: cfg.dot}}>
+                                    {Object.entries(STATUS_CONFIG).map(([k, c]) => <option key={k} value={k} style={{background: '#1e293b', color: 'white'}}>{c.label}</option>)}
+                                  </select>
+                                </td>
+                                {/* Date */}
+                                <td className="p-2 text-slate-400 whitespace-nowrap">{offer.offer_date ? new Date(offer.offer_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</td>
+                                {/* Address */}
+                                <td className="p-2">
+                                  <div className="flex items-center gap-1">
+                                    {offer.zillow_url ? <a href={offer.zillow_url} target="_blank" rel="noopener noreferrer" className="text-white hover:text-blue-400 truncate max-w-[180px]">{offer.property_address}</a> : <span className="text-white truncate max-w-[180px]">{offer.property_address}</span>}
+                                    {offer.is_off_market && <span className="text-[8px] px-1 py-0.5 rounded bg-orange-500/20 text-orange-400 font-bold">OFF</span>}
+                                  </div>
+                                </td>
+                                {/* MLS */}
+                                <td className="p-2 text-slate-500">{offer.mls_number || '—'}</td>
+                                {/* List $ */}
+                                <td className="p-2 text-right text-slate-400">{fmtK(offer.asking_price)}</td>
+                                {/* ARV */}
+                                <td className="p-2 text-right text-slate-400">{fmtK(offer.arv)}</td>
+                                {/* 70% List */}
+                                <td className="p-2 text-right text-blue-400/70">{listP ? fmtK(listP * 0.7) : ''}</td>
+                                {/* 70% ARV */}
+                                <td className="p-2 text-right text-cyan-400/70">{arvP ? fmtK(arvP * 0.7) : ''}</td>
+                                {/* 75% ARV */}
+                                <td className="p-2 text-right text-emerald-400/70">{arvP ? fmtK(arvP * 0.75) : ''}</td>
+                                {/* Offer $ */}
+                                <td className="p-2 text-right text-amber-400 font-semibold">{fmtK(offer.offer_amount)}</td>
+                                {/* Offer Sent? */}
+                                <td className="p-2 text-center">
+                                  <div className="flex items-center gap-1 justify-center">
+                                    <input type="checkbox" checked={offer.offer_sent || false} onChange={e => updateOfferField(offer, 'offer_sent', e.target.checked)} className="w-3 h-3 rounded cursor-pointer" />
+                                    {offer.offer_sent && <input type="text" value={offer.offer_sent_note || ''} onBlur={e => updateOfferField(offer, 'offer_sent_note', e.target.value)} onChange={e => setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, offer_sent_note: e.target.value } : o))} className="bg-transparent text-[10px] text-slate-400 w-16 border-b border-slate-600 outline-none" placeholder="note" />}
+                                  </div>
+                                </td>
+                                {/* 2nd Offer */}
+                                <td className="p-2 text-center">
+                                  <div className="flex items-center gap-1 justify-center">
+                                    <input type="checkbox" checked={offer.second_offer || false} onChange={e => updateOfferField(offer, 'second_offer', e.target.checked)} className="w-3 h-3 rounded cursor-pointer" />
+                                    {offer.second_offer && <input type="text" value={offer.second_offer_note || ''} onBlur={e => updateOfferField(offer, 'second_offer_note', e.target.value)} onChange={e => setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, second_offer_note: e.target.value } : o))} className="bg-transparent text-[10px] text-slate-400 w-16 border-b border-slate-600 outline-none" placeholder="note" />}
+                                  </div>
+                                </td>
+                                {/* Response */}
+                                <td className="p-2">
+                                  <input type="text" value={offer.response || ''} onBlur={e => updateOfferField(offer, 'response', e.target.value)} onChange={e => setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, response: e.target.value } : o))} className="bg-transparent text-[10px] text-slate-300 w-20 border-b border-slate-700 outline-none focus:border-blue-500" placeholder="..." />
+                                </td>
+                                {/* Follow-up */}
+                                <td className="p-2">
+                                  <div className="flex items-center gap-0.5 justify-center">
+                                    <button onClick={() => toggleFollowUp(offer, 'emailed')} className={`text-[10px] px-1 py-0.5 rounded ${offer.emailed ? 'bg-green-500/20 text-green-400' : 'text-slate-600 hover:text-slate-400'}`} title="Emailed">✉️</button>
+                                    <button onClick={() => toggleFollowUp(offer, 'texted')} className={`text-[10px] px-1 py-0.5 rounded ${offer.texted ? 'bg-green-500/20 text-green-400' : 'text-slate-600 hover:text-slate-400'}`} title="Texted">💬</button>
+                                    <button onClick={() => toggleFollowUp(offer, 'called')} className={`text-[10px] px-1 py-0.5 rounded ${offer.called ? 'bg-green-500/20 text-green-400' : 'text-slate-600 hover:text-slate-400'}`} title="Called">📞</button>
+                                    {needsFollowup && <span className="text-[8px] text-amber-400 animate-pulse" title={daysSince !== null ? `${daysSince}d ago` : 'Never'}>🔔</span>}
+                                  </div>
+                                </td>
+                                {/* Agent */}
+                                <td className="p-2 text-slate-500 truncate max-w-[100px]">{offer.agent_name || '—'}</td>
+                                {/* Rep */}
+                                {currentUser?.role === 'owner' && <td className="p-2 text-blue-400 text-[10px] truncate max-w-[80px]">{member?.display_name || member?.name || ''}</td>}
+                                {/* Actions */}
+                                <td className="p-2 text-center">
+                                  <div className="flex gap-0.5 justify-center">
+                                    <button onClick={() => { setEditingOffer(offer); setOfferForm({ property_address: offer.property_address || '', mls_number: offer.mls_number || '', asking_price: offer.asking_price || '', offer_amount: offer.offer_amount || '', offer_date: offer.offer_date || '', is_off_market: offer.is_off_market || false, agent_name: offer.agent_name || '', agent_phone: offer.agent_phone || '', agent_email: offer.agent_email || '', zillow_url: offer.zillow_url || '', notes: offer.notes || '', status: offer.status || 'active', arv: offer.arv || '', offer_sent: offer.offer_sent || false, offer_sent_note: offer.offer_sent_note || '', second_offer: offer.second_offer || false, second_offer_note: offer.second_offer_note || '', response: offer.response || '' }); setShowAddOffer(true); }} className="text-slate-600 hover:text-white text-[10px]">✏️</button>
+                                    <button onClick={async () => { if (confirm('Delete?')) { await db.offerLog.delete(offer.id); setOfferLog(prev => prev.filter(o => o.id !== offer.id)); }}} className="text-slate-600 hover:text-red-400 text-[10px]">🗑️</button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   )}
-
-                  <div className="space-y-2">
-                    {filtered.map(offer => {
-                      const cfg = STATUS_CONFIG[offer.status] || STATUS_CONFIG.active;
-                      const member = teamMembers.find(u => u.id === offer.user_id);
-                      const daysSinceFollowup = offer.last_followup_at ? Math.floor((new Date() - new Date(offer.last_followup_at)) / 86400000) : null;
-                      const needsFollowup = daysSinceFollowup === null || daysSinceFollowup >= 3;
-
-                      return (
-                        <div key={offer.id} className={`bg-slate-800 rounded-xl p-3 border ${cfg.border} transition hover:border-slate-600`}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                {offer.zillow_url ? (
-                                  <a href={offer.zillow_url} target="_blank" rel="noopener noreferrer" className="text-white font-semibold text-sm hover:text-blue-400 transition truncate">{offer.property_address}</a>
-                                ) : (
-                                  <p className="text-white font-semibold text-sm truncate">{offer.property_address}</p>
-                                )}
-                                {offer.is_off_market && <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-semibold">OFF-MKT</span>}
-                              </div>
-                              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${cfg.color}`}>{cfg.label}</span>
-                                <span className="text-slate-600 text-[10px]">{offer.offer_date ? new Date(offer.offer_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
-                                {offer.mls_number && !offer.is_off_market && <span className="text-slate-600 text-[10px]">MLS: {offer.mls_number}</span>}
-                                {offer.asking_price && <span className="text-slate-500 text-[10px]">Ask: ${(parseFloat(offer.asking_price)/1000).toFixed(0)}k</span>}
-                                {offer.offer_amount && <span className="text-cyan-400 text-[10px]">Offer: ${(parseFloat(offer.offer_amount)/1000).toFixed(0)}k</span>}
-                                {currentUser?.role === 'owner' && member && <span className="text-blue-400 text-[10px]">{member.avatar_emoji || '👤'} {member.display_name || member.name}</span>}
-                              </div>
-                            </div>
-
-                            {/* Status dropdown */}
-                            <select value={offer.status} onChange={e => updateOfferStatus(offer, e.target.value)} className="bg-slate-700 text-white text-[10px] p-1 rounded border border-slate-600 cursor-pointer">
-                              {Object.entries(STATUS_CONFIG).map(([key, c]) => (
-                                <option key={key} value={key}>{c.label}</option>
-                              ))}
-                            </select>
-                          </div>
-
-                          {/* Agent + Notes */}
-                          {offer.agent_name && <p className="text-slate-500 text-[10px] mt-1.5">🤝 {offer.agent_name} {offer.agent_phone ? `· ${offer.agent_phone}` : ''}</p>}
-                          {offer.notes && <p className="text-slate-600 text-[10px] mt-0.5 truncate">📝 {offer.notes}</p>}
-
-                          {/* Follow-up Row */}
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <button onClick={() => toggleFollowUp(offer, 'emailed')} className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition ${offer.emailed ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
-                              ✉️ {offer.emailed ? 'Emailed' : 'Email'}
-                              {offer.emailed_at && <span className="text-[8px] opacity-60">{new Date(offer.emailed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                            </button>
-                            <button onClick={() => toggleFollowUp(offer, 'texted')} className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition ${offer.texted ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
-                              💬 {offer.texted ? 'Texted' : 'Text'}
-                              {offer.texted_at && <span className="text-[8px] opacity-60">{new Date(offer.texted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                            </button>
-                            <button onClick={() => toggleFollowUp(offer, 'called')} className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition ${offer.called ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-slate-700/50 text-slate-500 border border-slate-700'}`}>
-                              📞 {offer.called ? 'Called' : 'Call'}
-                              {offer.called_at && <span className="text-[8px] opacity-60">{new Date(offer.called_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                            </button>
-
-                            {needsFollowup && offer.status !== 'rejected' && offer.status !== 'accepted' && (
-                              <span className="text-[10px] text-amber-400 font-semibold animate-pulse">🔔 Follow up{daysSinceFollowup !== null ? ` (${daysSinceFollowup}d ago)` : ''}</span>
-                            )}
-
-                            <div className="ml-auto flex gap-1">
-                              <button onClick={() => { setEditingOffer(offer); setOfferForm({ property_address: offer.property_address || '', mls_number: offer.mls_number || '', asking_price: offer.asking_price || '', offer_amount: offer.offer_amount || '', offer_date: offer.offer_date || '', is_off_market: offer.is_off_market || false, agent_name: offer.agent_name || '', agent_phone: offer.agent_phone || '', agent_email: offer.agent_email || '', zillow_url: offer.zillow_url || '', notes: offer.notes || '', status: offer.status || 'active' }); setShowAddOffer(true); }} className="text-slate-600 hover:text-white text-xs">✏️</button>
-                              <button onClick={async () => { if (confirm('Delete this offer?')) { await db.offerLog.delete(offer.id); setOfferLog(prev => prev.filter(o => o.id !== offer.id)); }}} className="text-slate-600 hover:text-red-400 text-xs">🗑️</button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
 
                   {/* Add/Edit Offer Modal */}
                   {showAddOffer && (
@@ -3634,20 +3675,32 @@ Style:
                               <input type="text" value={offerForm.mls_number} onChange={e => { const v = e.target.value; setOfferForm(f => ({ ...f, mls_number: v, is_off_market: isOffMarket(v) || f.is_off_market })); }} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="MLS # or 'off market'" />
                             </div>
                             <div>
-                              <label className="text-slate-400 text-xs">Offer Date *</label>
+                              <label className="text-slate-400 text-xs">Date *</label>
                               <input type="date" value={offerForm.offer_date} onChange={e => setOfferForm(f => ({ ...f, offer_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-3 gap-3">
                             <div>
-                              <label className="text-slate-400 text-xs">Asking Price</label>
+                              <label className="text-slate-400 text-xs">List Price</label>
                               <input type="number" value={offerForm.asking_price} onChange={e => setOfferForm(f => ({ ...f, asking_price: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="$0" />
+                            </div>
+                            <div>
+                              <label className="text-slate-400 text-xs">ARV</label>
+                              <input type="number" value={offerForm.arv} onChange={e => setOfferForm(f => ({ ...f, arv: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="$0" />
                             </div>
                             <div>
                               <label className="text-slate-400 text-xs">Offer Amount</label>
                               <input type="number" value={offerForm.offer_amount} onChange={e => setOfferForm(f => ({ ...f, offer_amount: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="$0" />
                             </div>
                           </div>
+                          {/* Auto-calculated benchmarks */}
+                          {(offerForm.asking_price || offerForm.arv) && (
+                            <div className="bg-slate-900/50 rounded-lg p-2.5 flex gap-4 text-[10px]">
+                              {offerForm.asking_price && <span className="text-blue-400">70% List: <b>${(parseFloat(offerForm.asking_price) * 0.7).toLocaleString(undefined, {maximumFractionDigits: 0})}</b></span>}
+                              {offerForm.arv && <span className="text-cyan-400">70% ARV: <b>${(parseFloat(offerForm.arv) * 0.7).toLocaleString(undefined, {maximumFractionDigits: 0})}</b></span>}
+                              {offerForm.arv && <span className="text-emerald-400">75% ARV: <b>${(parseFloat(offerForm.arv) * 0.75).toLocaleString(undefined, {maximumFractionDigits: 0})}</b></span>}
+                            </div>
+                          )}
                           <div>
                             <label className="text-slate-400 text-xs">Zillow Link</label>
                             <input type="url" value={offerForm.zillow_url} onChange={e => setOfferForm(f => ({ ...f, zillow_url: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="https://zillow.com/..." />
@@ -3656,8 +3709,29 @@ Style:
                             <input type="checkbox" checked={offerForm.is_off_market} onChange={e => setOfferForm(f => ({ ...f, is_off_market: e.target.checked }))} className="w-4 h-4 rounded" />
                             <span className="text-slate-300 text-sm">🔥 Off-Market Deal</span>
                           </label>
+                          {/* Offer Sent / 2nd Offer / Response */}
+                          <div className="border-t border-slate-700 pt-3 space-y-2">
+                            <div className="flex items-center gap-3">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" checked={offerForm.offer_sent} onChange={e => setOfferForm(f => ({ ...f, offer_sent: e.target.checked }))} className="w-4 h-4 rounded" />
+                                <span className="text-slate-300 text-sm">📤 Offer Sent</span>
+                              </label>
+                              {offerForm.offer_sent && <input type="text" value={offerForm.offer_sent_note} onChange={e => setOfferForm(f => ({ ...f, offer_sent_note: e.target.value }))} className="flex-1 bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-xs" placeholder="Note..." />}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" checked={offerForm.second_offer} onChange={e => setOfferForm(f => ({ ...f, second_offer: e.target.checked }))} className="w-4 h-4 rounded" />
+                                <span className="text-slate-300 text-sm">📤 2nd Offer</span>
+                              </label>
+                              {offerForm.second_offer && <input type="text" value={offerForm.second_offer_note} onChange={e => setOfferForm(f => ({ ...f, second_offer_note: e.target.value }))} className="flex-1 bg-slate-700 text-white p-2 rounded-lg border border-slate-600 text-xs" placeholder="Note..." />}
+                            </div>
+                            <div>
+                              <label className="text-slate-400 text-xs">Response</label>
+                              <input type="text" value={offerForm.response} onChange={e => setOfferForm(f => ({ ...f, response: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder="e.g. Countered at $X, Rejected, No response..." />
+                            </div>
+                          </div>
                           {/* Agent info */}
-                          <div className="border-t border-slate-700 pt-3 mt-1">
+                          <div className="border-t border-slate-700 pt-3">
                             <p className="text-slate-400 text-xs font-semibold mb-2">🤝 Agent Info</p>
                             <input type="text" value={offerForm.agent_name} onChange={e => setOfferForm(f => ({ ...f, agent_name: e.target.value }))} className="w-full bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm mb-2" placeholder="Agent name" />
                             <div className="grid grid-cols-2 gap-2">
