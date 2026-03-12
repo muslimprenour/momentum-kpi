@@ -1399,6 +1399,7 @@ export default function MomentumApp() {
     ar_complete: false, ar_complete_date: '',
     had_price_reduction: false, revised_uc_price: '',
     dd_type: 'calendar',
+    dd_days: '',
     note_log: [],
     buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '',
     documents: { psa: false, ar_addendum: false, assignment: false, hud: false },
@@ -1807,11 +1808,49 @@ Style:
     setCoachLoading(false);
   };
 
-  // Calculate business days between now and target date
+  // Federal holidays - returns Set of 'YYYY-MM-DD' strings for a given year
+  const getFederalHolidays = (year) => {
+    const holidays = new Set();
+    const fmt = (d) => d.toISOString().split('T')[0];
+    // Fixed-date holidays
+    holidays.add(`${year}-01-01`); // New Year's Day
+    holidays.add(`${year}-06-19`); // Juneteenth
+    holidays.add(`${year}-07-04`); // Independence Day
+    holidays.add(`${year}-11-11`); // Veterans Day
+    holidays.add(`${year}-12-25`); // Christmas Day
+    // Nth weekday holidays
+    const nthWeekday = (m, dow, n) => {
+      const d = new Date(year, m, 1);
+      let count = 0;
+      while (count < n) { if (d.getDay() === dow) count++; if (count < n) d.setDate(d.getDate() + 1); }
+      return d;
+    };
+    const lastWeekday = (m, dow) => {
+      const d = new Date(year, m + 1, 0);
+      while (d.getDay() !== dow) d.setDate(d.getDate() - 1);
+      return d;
+    };
+    holidays.add(fmt(nthWeekday(0, 1, 3)));  // MLK Day - 3rd Monday Jan
+    holidays.add(fmt(nthWeekday(1, 1, 3)));  // Presidents Day - 3rd Monday Feb
+    holidays.add(fmt(lastWeekday(4, 1)));     // Memorial Day - last Monday May
+    holidays.add(fmt(nthWeekday(8, 1, 1)));  // Labor Day - 1st Monday Sep
+    holidays.add(fmt(nthWeekday(9, 1, 2)));  // Columbus Day - 2nd Monday Oct
+    holidays.add(fmt(nthWeekday(10, 3, 4))); // Thanksgiving - 4th Thursday Nov
+    return holidays;
+  };
+
+  const isBusinessDay = (date) => {
+    const day = date.getDay();
+    if (day === 0 || day === 6) return false;
+    const holidays = getFederalHolidays(date.getFullYear());
+    return !holidays.has(date.toISOString().split('T')[0]);
+  };
+
+  // Calculate business days between now and target date (excluding weekends + federal holidays)
   const getBusinessDaysLeft = (targetDate) => {
     const target = new Date(targetDate + 'T23:59:59');
     const now = new Date();
-    if (target <= now) return Math.ceil((target - now) / 86400000); // negative = expired
+    if (target <= now) return Math.ceil((target - now) / 86400000);
     let count = 0;
     const cur = new Date(now);
     cur.setHours(0,0,0,0);
@@ -1819,10 +1858,20 @@ Style:
     end.setHours(0,0,0,0);
     while (cur < end) {
       cur.setDate(cur.getDate() + 1);
-      const day = cur.getDay();
-      if (day !== 0 && day !== 6) count++;
+      if (isBusinessDay(cur)) count++;
     }
     return count;
+  };
+
+  // Add N business days to a date (skips weekends + federal holidays)
+  const addBusinessDays = (startDate, numDays) => {
+    const d = new Date(startDate + 'T12:00:00');
+    let added = 0;
+    while (added < numDays) {
+      d.setDate(d.getDate() + 1);
+      if (isBusinessDay(d)) added++;
+    }
+    return d.toISOString().split('T')[0];
   };
 
   const formatDDDate = (dateStr) => {
@@ -3405,7 +3454,7 @@ Style:
                     </button>
                   </div>
                   <button
-                    onClick={() => { setShowAddPipeline(true); setEditingPipeline(null); setPipelineForm({ property_address: '', zillow_url: '', asking_price: '', deal_source: 'on_market', deal_type: 'wholesale', offer_amount: '', offer_date: '', accepted_price: '', uc_price: '', uc_date: '', inspection_date: '', est_close_date: '', est_revenue: '', sold_price: '', agent_name: '', agent_email: '', agent_phone: '', stage: 'offer_accepted', notes: '', sourced_by_user_id: '', ar_complete: false, ar_complete_date: '', had_price_reduction: false, revised_uc_price: '', dd_type: 'calendar', note_log: [], buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '', documents: { psa: false, ar_addendum: false, assignment: false, hud: false }, psa_url: '', ar_addendum_url: '', assignment_url: '', hud_url: '' }); setPipelineFiles({ psa: null, ar_addendum: null, assignment: null, hud: null }); }}
+                    onClick={() => { setShowAddPipeline(true); setEditingPipeline(null); setPipelineForm({ property_address: '', zillow_url: '', asking_price: '', deal_source: 'on_market', deal_type: 'wholesale', offer_amount: '', offer_date: '', accepted_price: '', uc_price: '', uc_date: '', inspection_date: '', est_close_date: '', est_revenue: '', sold_price: '', agent_name: '', agent_email: '', agent_phone: '', stage: 'offer_accepted', notes: '', sourced_by_user_id: '', ar_complete: false, ar_complete_date: '', had_price_reduction: false, revised_uc_price: '', dd_type: 'calendar', dd_days: '', note_log: [], buyer_name: '', buyer_emd_submitted: false, buyer_emd_amount: '', documents: { psa: false, ar_addendum: false, assignment: false, hud: false }, psa_url: '', ar_addendum_url: '', assignment_url: '', hud_url: '' }); setPipelineFiles({ psa: null, ar_addendum: null, assignment: null, hud: null }); }}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-sm"
                   >
                     + Add Deal
@@ -3461,6 +3510,9 @@ Style:
               };
 
               const updateOfferStatus = async (offer, newStatus) => {
+                if (newStatus === 'accepted') {
+                  if (!confirm(`Mark "${offer.property_address}" as accepted?\n\nThis will create a pipeline deal automatically.`)) return;
+                }
                 await db.offerLog.update(offer.id, { status: newStatus, updated_at: new Date().toISOString() });
                 setOfferLog(prev => prev.map(o => o.id === offer.id ? { ...o, status: newStatus } : o));
                 if (newStatus === 'accepted') {
@@ -3849,7 +3901,7 @@ Style:
                   buyer_name: deal.buyer_name || '', buyer_emd_submitted: deal.buyer_emd_submitted || false,
                   buyer_emd_amount: deal.buyer_emd_amount || '',
                   had_price_reduction: deal.had_price_reduction || false, revised_uc_price: deal.revised_uc_price || '',
-                  dd_type: deal.dd_type || 'calendar', note_log: deal.note_log || [],
+                  dd_type: deal.dd_type || 'calendar', dd_days: deal.dd_days || '', note_log: deal.note_log || [],
                   documents: deal.documents || { psa: false, ar_addendum: false, assignment: false, hud: false },
                   psa_url: deal.psa_url || '', ar_addendum_url: deal.ar_addendum_url || '',
                   assignment_url: deal.assignment_url || '', hud_url: deal.hud_url || ''
@@ -3898,6 +3950,7 @@ Style:
                   had_price_reduction: pipelineForm.had_price_reduction || false,
                   revised_uc_price: pipelineForm.revised_uc_price ? parseFloat(pipelineForm.revised_uc_price) : null,
                   dd_type: pipelineForm.dd_type || 'calendar',
+                  dd_days: pipelineForm.dd_days ? parseInt(pipelineForm.dd_days) : null,
                   note_log: pipelineForm.note_log || [],
                   documents: pipelineForm.documents || {},
                   psa_url: pipelineForm.psa_url || null,
@@ -4270,17 +4323,72 @@ Style:
                                 </div>
                                 <div>
                                   <label className="text-slate-400 text-xs">UC Date</label>
-                                  <input type="date" value={pipelineForm.uc_date} onChange={e => setPipelineForm(f => ({ ...f, uc_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                                  <input type="date" value={pipelineForm.uc_date} onChange={e => {
+                                    const ucDate = e.target.value;
+                                    const updates = { uc_date: ucDate };
+                                    if (ucDate && pipelineForm.dd_days) {
+                                      const numDays = parseInt(pipelineForm.dd_days);
+                                      if (pipelineForm.dd_type === 'business') {
+                                        updates.inspection_date = addBusinessDays(ucDate, numDays);
+                                      } else {
+                                        const d = new Date(ucDate + 'T12:00:00');
+                                        d.setDate(d.getDate() + numDays);
+                                        updates.inspection_date = d.toISOString().split('T')[0];
+                                      }
+                                    }
+                                    setPipelineForm(f => ({ ...f, ...updates }));
+                                  }} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
                                 </div>
                               </div>
                               <div>
                                 <label className="text-slate-400 text-xs">DD / Inspection Deadline</label>
-                                <input type="date" value={pipelineForm.inspection_date} onChange={e => setPipelineForm(f => ({ ...f, inspection_date: e.target.value }))} className="w-full mt-1 bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
-                                <div className="flex items-center gap-2 mt-1.5">
-                                  <span className="text-slate-500 text-[10px]">Count as:</span>
-                                  <button onClick={() => setPipelineForm(f => ({ ...f, dd_type: 'calendar' }))} className={`text-[10px] px-2 py-0.5 rounded transition ${pipelineForm.dd_type !== 'business' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-700 text-slate-500 border border-slate-600'}`}>📅 Calendar Days</button>
-                                  <button onClick={() => setPipelineForm(f => ({ ...f, dd_type: 'business' }))} className={`text-[10px] px-2 py-0.5 rounded transition ${pipelineForm.dd_type === 'business' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-700 text-slate-500 border border-slate-600'}`}>💼 Business Days</button>
+                                <div className="flex items-center gap-2 mt-1.5 mb-1.5">
+                                  <span className="text-slate-500 text-[10px]">Type:</span>
+                                  <button onClick={() => {
+                                    const updates = { dd_type: 'calendar' };
+                                    if (pipelineForm.dd_days && pipelineForm.uc_date) {
+                                      const d = new Date(pipelineForm.uc_date + 'T12:00:00');
+                                      d.setDate(d.getDate() + parseInt(pipelineForm.dd_days));
+                                      updates.inspection_date = d.toISOString().split('T')[0];
+                                    }
+                                    setPipelineForm(f => ({ ...f, ...updates }));
+                                  }} className={`text-[10px] px-2 py-0.5 rounded transition ${pipelineForm.dd_type !== 'business' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-700 text-slate-500 border border-slate-600'}`}>📅 Calendar</button>
+                                  <button onClick={() => {
+                                    const updates = { dd_type: 'business' };
+                                    if (pipelineForm.dd_days && pipelineForm.uc_date) {
+                                      updates.inspection_date = addBusinessDays(pipelineForm.uc_date, parseInt(pipelineForm.dd_days));
+                                    }
+                                    setPipelineForm(f => ({ ...f, ...updates }));
+                                  }} className={`text-[10px] px-2 py-0.5 rounded transition ${pipelineForm.dd_type === 'business' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-700 text-slate-500 border border-slate-600'}`}>💼 Business</button>
                                 </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1">
+                                    <input type="number" value={pipelineForm.dd_days} onChange={e => {
+                                      const days = e.target.value;
+                                      const updates = { dd_days: days };
+                                      if (days && pipelineForm.uc_date) {
+                                        const numDays = parseInt(days);
+                                        if (pipelineForm.dd_type === 'business') {
+                                          updates.inspection_date = addBusinessDays(pipelineForm.uc_date, numDays);
+                                        } else {
+                                          const d = new Date(pipelineForm.uc_date + 'T12:00:00');
+                                          d.setDate(d.getDate() + numDays);
+                                          updates.inspection_date = d.toISOString().split('T')[0];
+                                        }
+                                      }
+                                      setPipelineForm(f => ({ ...f, ...updates }));
+                                    }} className="w-full bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" placeholder={`# of ${pipelineForm.dd_type === 'business' ? 'business' : 'calendar'} days`} />
+                                  </div>
+                                  <span className="text-slate-600 text-xs">→</span>
+                                  <div className="flex-1">
+                                    <input type="date" value={pipelineForm.inspection_date} onChange={e => setPipelineForm(f => ({ ...f, inspection_date: e.target.value }))} className="w-full bg-slate-700 text-white p-2.5 rounded-lg border border-slate-600 text-sm" />
+                                  </div>
+                                </div>
+                                {pipelineForm.dd_days && pipelineForm.inspection_date && (
+                                  <p className="text-slate-500 text-[10px] mt-1">
+                                    {pipelineForm.dd_days} {pipelineForm.dd_type === 'business' ? 'business' : 'calendar'} days → expires {new Date(pipelineForm.inspection_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </p>
+                                )}
                               </div>
                               {pipelineForm.stage === 'under_contract' && (
                                 <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 space-y-3">
